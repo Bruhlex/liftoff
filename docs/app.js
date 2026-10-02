@@ -7,7 +7,7 @@
 
   let fileName = 'input.js';
   let result = '';
-  let worker = null, timer = null;
+  let worker = null, timer = null, ticker = null, step = '', started = 0;
 
   const fmtBytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} kB` : `${(n / 1048576).toFixed(2)} MB`;
 
@@ -168,6 +168,7 @@
     if (worker) worker.terminate();
     worker = null;
     clearTimeout(timer);
+    clearInterval(ticker);
     cancel.hidden = true;
     updateInput();
   }
@@ -179,7 +180,12 @@
     setRecovery(null);
     placeholder('Decompiling …');
     $('outputInfo').textContent = '';
-    setStatus('Decompiling …');
+    // the current step and the elapsed time, so a long webcrack pass does not look like a hang
+    step = 'starting';
+    started = performance.now();
+    const tick = () => setStatus(`Decompiling … ${Math.floor((performance.now() - started) / 1000)} s · ${step}`);
+    tick();
+    ticker = setInterval(tick, 500);
     cancel.hidden = false;
 
     worker = new Worker('decompiler.worker.js');
@@ -193,7 +199,10 @@
 
     worker.onmessage = (e) => {
       const m = e.data;
-      if (m.type === 'log') addLog(m.text);
+      if (m.type === 'log') {
+        addLog(m.text);
+        step = m.text.replace(/\s*\.\.\.$/, '').replace(/^normalizing .* with webcrack$/, 'deobfuscating with webcrack (large files take a while)');
+      }
       else if (m.type === 'warn') addLog(`warning: ${m.text}`, 'w');
       else if (m.type === 'done') {
         setOutput(m.code);

@@ -16,18 +16,23 @@ async function decompile(raw, { name = 'input.js', skipWebcrack = false, disasm 
   const warn = (m) => { warnings.push(m); onWarn(m); };
 
   log(`normalizing ${name} (${raw.length} bytes) with webcrack ...`);
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  let t = now();
   const code = await normalize(raw, { skipWebcrack, log });
+  log(`normalized in ${((now() - t) / 1000).toFixed(1)} s; looking for the VM interpreter ...`);
 
   let vm;
+  t = now();
   try {
     vm = locate(code, { log });
   } catch (e) {
+    log(`interpreter search took ${((now() - t) / 1000).toFixed(1)} s`);
     if (!/No VM interpreter loop found/.test(e.message)) throw e;
     // not a virtualized build: the webcrack pass is all there is to do
     log('no obfuscator.io VM interpreter found; returning the webcrack result');
     const header = `// ${name}: no obfuscator.io VM found. Output of webcrack only\n` +
       `// (string arrays, control-flow flattening, constants and formatting undone where webcrack recognises them).\n`;
-    return { mode: 'webcrack', code: header + code + (code.endsWith('\n') ? '' : '\n'), warnings, programs: 0, opcodes: 0, stats: null };
+    return { mode: 'webcrack', code: withHeader(header, code), warnings, programs: 0, opcodes: 0, stats: null };
   }
   const { table, unknown } = buildOpcodeTable(vm);
   log(`opcode table: ${table.size} opcodes, ${table.size - unknown.length} classified by handler shape`);
@@ -52,7 +57,14 @@ async function decompile(raw, { name = 'input.js', skipWebcrack = false, disasm 
       : `// recovered about ${stats.recoveredPct} % of ${stats.instructions} VM instructions; `) +
     `${stats.opcodesKnown} of ${stats.opcodes} opcodes identified\n` +
     (warnings.length ? warnings.map((w) => `//   - ${w}`).join('\n') + '\n' : '');
-  return { mode: 'vm', code: header + out + '\n', warnings, programs: ex.programs.length, opcodes: table.size, stats };
+  return { mode: 'vm', code: withHeader(header, out), warnings, programs: ex.programs.length, opcodes: table.size, stats };
+}
+
+/** Prepend the header comment; a hashbang line (`#!/usr/bin/env node`) must stay the first line. */
+function withHeader(header, code) {
+  const m = /^#![^\n]*\n?/.exec(code);
+  const body = m ? code.slice(m[0].length) : code;
+  return (m ? m[0].replace(/\n?$/, '\n') : '') + header + body + (body.endsWith('\n') ? '' : '\n');
 }
 
 /**
