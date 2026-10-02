@@ -811,6 +811,21 @@ class Lifter {
       if (NUM_JUMP.has(m)) {
         const sw = m === 'JMPT' ? this.trySwitch(state, pc, end, stack, emit) : null;
         if (sw) { stack = sw.stack; pc = sw.next; continue; }
+        // `out: if (..) { .. if (..) { .. } else { break out; } .. }`: a jump from inside a nested
+        // branch to a point behind this conditional; the conditional and the code up to that point
+        // form a labeled block
+        const esc = state.blockDone.has(pc) ? null : this.deepBreakTarget(state, pc, end);
+        if (esc !== null) {
+          state.blockDone.add(pc);
+          const label = `L${++state.labelCounter}`;
+          state.blocks.push({ target: esc, label, used: false });
+          const inner = this.liftRange(state, pc, esc, stack);
+          const blk = state.blocks.pop();
+          stack = inner.stack;
+          emit(blk.used ? t.labeledStatement(t.identifier(label), t.blockStatement(inner.stmts)) : t.blockStatement(inner.stmts));
+          pc = esc;
+          continue;
+        }
         const r = this.liftConditional(state, pc, end, stack, emit);
         stack = r.stack;
         pc = r.next;
@@ -903,6 +918,35 @@ class Lifter {
       const mf = this.mnem(state.instrs[fn][0]);
       if (!UNCOND_JUMP.has(mf) && !NUM_JUMP.has(mf)) continue;
       if (best === null || to > best) best = to;
+    }
+    return best;
+  }
+
+  /**
+   * Target of a `break label` out of the conditional at `pc`, or null: an unconditional forward
+   * jump inside the conditional that lies within a nested region ending before its target (so
+   * falling through cannot reach the target), and that no enclosing loop, switch or block resolves.
+   */
+  deepBreakTarget(state, pc, end) {
+    const { jumps, instrs } = state;
+    let regionEnd = jumps[pc];
+    if (!(regionEnd > pc) || regionEnd > end) return null;
+    const before = regionEnd - 1;
+    // an `else` branch: the then-branch ends with a plain jump over it
+    if (before > pc && this.mnem(instrs[before][0]) === 'JMP' && jumps[before] > regionEnd && jumps[before] <= end) regionEnd = jumps[before];
+    const resolved = (tgt) => state.loops.some((l) => tgt === l.exit || tgt === l.header || tgt === l.update || tgt === l.back) ||
+      state.switchEnds.some((sw) => tgt === sw.end) || state.blocks.some((b) => b.target === tgt);
+    const list = Object.entries(jumps).map(([f, to]) => [Number(f), to]).filter(([f]) => f > pc && f < regionEnd);
+    let best = null;
+    for (const [f, T] of list) {
+      if (!UNCOND_JUMP.has(this.mnem(instrs[f][0])) || T <= f || T > end || T < jumps[pc] || resolved(T)) continue;
+      // a break out of an inner loop or try region is structured there
+      if ([...state.loopEnds].some(([H, L]) => H > pc && H <= f && f <= L)) continue;
+      if (Object.entries(state.tries).some(([tp, tr]) => tr && Number(tp) > pc && Number(tp) < f && (tr[2] === null || tr[2] >= f))) continue;
+      // nested: some jump between pc and f lands between f and T (not right behind f, where f is
+      // just the jump over a nested `else`)
+      if (!list.some(([h, to]) => h < f && to > f + 1 && to < T)) continue;
+      if (best === null || T > best) best = T;
     }
     return best;
   }

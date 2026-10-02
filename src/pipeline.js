@@ -48,6 +48,8 @@ async function decompile(raw, { name = 'input.js', skipWebcrack = false, disasm 
   if (disasm) return { mode: 'vm', code: disassemble(ex, table), warnings, programs: ex.programs.length, opcodes: table.size, stats: null };
 
   const { code: out } = assemble(vm, ex, table, { log, warn });
+  const unresolved = (out.match(/unresolved jump to \d+/g) || []).length;
+  if (unresolved) warn(`${unresolved} jump(s) could not be structured; the output marks them with /* unresolved jump to N */ and is not equivalent there`);
   const unidentified = unknown.filter((u) => !table.has(u.opcode)).length;
   const stats = recoveryStats(ex, table, out, unidentified);
   log(`recovered about ${stats.recoveredPct} % of ${stats.instructions} VM instructions`);
@@ -69,8 +71,9 @@ function withHeader(header, code) {
 
 /**
  * How much of the bytecode came back as real code. An instruction counts as not recovered
- * when its opcode could not be identified, or when the lifter had to emit a placeholder call
- * for it (`__UNKNOWN_12(...)`, `__SOME_OPCODE(...)`, `__binop(...)`).
+ * when its opcode could not be identified, when the lifter had to emit a placeholder call
+ * for it (`__UNKNOWN_12(...)`, `__SOME_OPCODE(...)`, `__binop(...)`), or when it is a jump that
+ * could not be structured (`/* unresolved jump to N *\/`).
  */
 function recoveryStats(ex, table, out, unidentified = 0) {
   let instructions = 0, unknown = 0;
@@ -81,7 +84,7 @@ function recoveryStats(ex, table, out, unidentified = 0) {
       if (!e || /^UNKNOWN/.test(e.mnemonic)) unknown++;
     }
   }
-  const placeholders = (out.match(/\b__(?:UNKNOWN_\d+|[A-Z][A-Z0-9_]*[A-Z0-9]|binop)\(/g) || []).length;
+  const placeholders = (out.match(/\b__(?:UNKNOWN_\d+|[A-Z][A-Z0-9_]*[A-Z0-9]|binop)\(|unresolved jump to \d+/g) || []).length;
   const lost = Math.min(instructions, Math.max(unknown, placeholders));
   const pct = instructions ? (100 * (instructions - lost)) / instructions : 100;
   const opcodesKnown = [...table.values()].filter((e) => !/^UNKNOWN/.test(e.mnemonic)).length;

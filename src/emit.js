@@ -1110,21 +1110,31 @@ function loopCleanup(file) {
 
 /**
  * Repeatedly re-crawl scopes and apply `action(scope, name, binding)` to one
- * binding at a time until no action reports a change. Slow but immune to the
- * stale-path problems of mutating while iterating bindings.
+ * binding at a time until no action reports a change. An action changes only the
+ * subtree of the scope that owns the binding, so after a change that subtree is
+ * skipped until the next round (its paths are stale), while scopes elsewhere in
+ * the same round are still processed. One round per change would be quadratic
+ * in the size of large bundles.
  */
 function rewriteBindings(file, action) {
   let any = false;
   for (let guard = 0; guard < 5000; guard++) {
     let changed = false;
     traverse.cache.clear();
+    nameIndex = new WeakMap();
+    indexedRoots.clear();
     traverse(file, {
       Scope(path) {
-        if (changed) return;
         const scope = path.scope;
-        for (const name of Object.keys(scope.bindings)) {
-          if (action(scope, name, scope.bindings[name])) { changed = true; path.stop(); return; }
+        // after a change, re-crawl this scope and continue with its remaining bindings
+        let hit = true;
+        for (let n = 0; hit && n < 5000; n++) {
+          hit = false;
+          for (const name of Object.keys(scope.bindings)) {
+            if (action(scope, name, scope.bindings[name])) { hit = changed = true; scope.crawl(); break; }
+          }
         }
+        if (changed) path.skip();
       },
     });
     if (!changed) break;
@@ -1196,24 +1206,44 @@ function functionHolderBinding(scope, name, b) {
     scope.removeBinding(target);
     vd.replaceWith(decl);
   }
+  noteNameAdded(target);
   return true;
 }
 
-/** Is an identifier named `name` used anywhere inside `root`, outside the function expression `fn`? */
-function identifierUsedOutside(root, name, fn) {
-  let hit = false;
-  const walk = (n) => {
-    if (!n || typeof n.type !== 'string' || hit) return;
-    if (n === fn) return;
-    if (t.isIdentifier(n, { name })) { hit = true; return; }
-    for (const k of t.VISITOR_KEYS[n.type] || []) {
-      const v = n[k];
+/** Count the identifier names below `n`, skipping the subtree `skip`. */
+function countNames(n, counts = new Map(), skip = null) {
+  const walk = (x) => {
+    if (!x || typeof x.type !== 'string' || x === skip) return;
+    if (x.type === 'Identifier') counts.set(x.name, (counts.get(x.name) || 0) + 1);
+    for (const k of t.VISITOR_KEYS[x.type] || []) {
+      const v = x[k];
       if (Array.isArray(v)) v.forEach(walk);
       else if (v && typeof v.type === 'string') walk(v);
     }
   };
-  walk(root);
-  return hit;
+  walk(n);
+  return counts;
+}
+
+// identifier counts per scope root, valid for one round of rewriteBindings: the changes of a round
+// lie inside the scope being processed, so only names they introduce need to be added
+let nameIndex = new WeakMap();
+const indexedRoots = new Set();
+function noteNameAdded(name) {
+  for (const counts of indexedRoots) counts.set(name, (counts.get(name) || 0) + 1);
+}
+
+/** Is an identifier named `name` used anywhere inside `root`, outside the function expression `fn`? */
+function identifierUsedOutside(root, name, fn) {
+  let counts = nameIndex.get(root);
+  if (!counts) {
+    counts = countNames(root);
+    nameIndex.set(root, counts);
+    indexedRoots.add(counts);
+  }
+  const total = counts.get(name) || 0;
+  if (!total) return false;
+  return total - (countNames(fn).get(name) || 0) > 0;
 }
 
 /** `let X = p;` at the top level of p's function, p referenced only there -> rename X to p */
