@@ -121,10 +121,18 @@
     if (!a.finished || !b.finished) { compareEl.hidden = true; return; }
     compareEl.hidden = false;
     const n = Math.max(a.lines.length, b.lines.length);
-    let i = 0;
-    while (i < n && a.lines[i] === b.lines[i]) i++;
+    // measured durations (`1234 ms`, `0.8 s`) differ between an interpreted and a plain program
+    const TIME = /\d+(?:[.,]\d+)?\s*(?:ms|µs|us|ns|s|sec|seconds?|Sekunden?)\b/g;
+    const norm = (x) => (x === undefined ? x : x.replace(TIME, '<time>'));
+    let i = 0, timed = 0;
+    for (; i < n; i++) {
+      if (a.lines[i] === b.lines[i]) continue;
+      if (norm(a.lines[i]) === norm(b.lines[i])) { timed++; continue; }
+      break;
+    }
     if (i === n) {
-      compareEl.textContent = `Both programs printed the same console output (${n} line${n === 1 ? '' : 's'}).`;
+      compareEl.textContent = `Both programs printed the same console output (${n} line${n === 1 ? '' : 's'})` +
+        (timed ? `, apart from measured times in ${timed} line${timed === 1 ? '' : 's'} (the VM build runs slower).` : '.');
       compareEl.className = 'compare ok';
     } else {
       const show = (x) => (x === undefined ? '(nothing)' : JSON.stringify(x.length > 120 ? `${x.slice(0, 120)}…` : x));
