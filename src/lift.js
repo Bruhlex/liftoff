@@ -530,7 +530,14 @@ class Lifter {
       });
       if (inTry) continue;
       state.tempRegs.add(r);
-      const last = ls.length ? Math.max(...ls) : sps[0];
+      let last = ls.length ? Math.max(...ls) : sps[0];
+      // a load inside a loop that the store is not part of runs on every iteration: everything up
+      // to the loop's back edge runs between two such reads (`offset = a.length; while (..) a[offset + i] = ..`)
+      let repeated = false;
+      for (const [f, to] of Object.entries(state.jumps)) {
+        const fn = Number(f);
+        if (to > sps[0] && to <= fn && ls.some((l) => l >= to && l <= fn)) { repeated = true; if (fn > last) last = fn; }
+      }
       // stores into other registers only matter to values that read those registers
       let st = false, fx = false;
       const regStores = new Set();
@@ -540,7 +547,7 @@ class Lifter {
         if (STORE_OPS.has(mm)) st = true;
         if (EFFECT_OPS.has(mm) || STORE_OPS.has(mm)) fx = true;
       }
-      state.tempWindow.set(r, { stores: st, effects: fx, regStores, loads: ls.length });
+      state.tempWindow.set(r, { stores: st, effects: fx, regStores, loads: repeated ? Math.max(2, ls.length) : ls.length });
     }
     state.tempValues = new Map();
   }
@@ -2406,8 +2413,12 @@ class Lifter {
         const args = this.popN(stack, argc);
         // a thunk run with the class under construction as `this` is a static initializer
         if (thisObj && thisObj.__builder && t.isClassExpression(thisObj) && !args.length && t.isFunctionExpression(callee) && !callee.params.length && !callee.async && !callee.generator) {
-          thisObj.body.body.push(t.staticBlock(callee.body.body));
-          push(t.identifier('undefined'));
+          const block = t.staticBlock(callee.body.body);
+          thisObj.body.body.push(block);
+          // its result is the value of a static field when the next definition uses it
+          const res = t.identifier('undefined');
+          res.__staticInit = block;
+          push(res);
           return;
         }
         push(this.callExpr(callee, args, thisObj));
@@ -2623,6 +2634,15 @@ class Lifter {
         const kind = opts.accessor || 'method';
         const meth = t.classMethod(kind, pk.key, fn.params, fn.body, pk.computed, isStatic, fn.generator, fn.async);
         obj.body.body.push(meth);
+      } else if (value.__staticInit && obj.body.body.includes(value.__staticInit)) {
+        // `static x = <expr>` compiles to a thunk run with the class as `this`: the field takes
+        // the static block's place, with the thunk's return value as initializer
+        const block = value.__staticInit;
+        const body = block.body;
+        const init = body.length === 1 && t.isReturnStatement(body[0])
+          ? body[0].argument || t.identifier('undefined')
+          : t.callExpression(t.arrowFunctionExpression([], t.blockStatement(body)), []);
+        obj.body.body.splice(obj.body.body.indexOf(block), 1, t.classProperty(pk.key, init, null, null, pk.computed, isStatic));
       } else {
         obj.body.body.push(t.classProperty(pk.key, value, null, null, pk.computed, isStatic));
       }
