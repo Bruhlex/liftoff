@@ -89,3 +89,13 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .recovery[hidden] { display: none; }
 .about h2:not(:first-child) { margin-top: 24px; }
 .top h1 .sub { font-weight: 400; color: var(--muted); font-size: 1rem; margin-left: 6px; }
+
+.console { border-top: 1px solid var(--border); }
+.console[hidden] { display: none; }
+.console-head { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; font-size: 0.85rem; }
+.console pre { margin: 0; padding: 8px 12px 10px; max-height: 220px; overflow: auto; background: var(--code-bg);
+  font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.console .w { color: var(--warn); } .console .e { color: var(--err); } .console .s { color: var(--muted); }
+.compare { margin: 16px 0 0; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel); }
+.compare[hidden] { display: none; }
+.compare.ok { color: var(--ok); } .compare.err { color: var(--err); }

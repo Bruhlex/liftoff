@@ -17,6 +17,7 @@ await build({
 });
 cpSync('web/index.html', 'docs/index.html');
 cpSync('web/app.js', 'docs/app.js');
+cpSync('web/runner.js', 'docs/runner.js');
 cpSync('web/style.css', 'docs/style.css');
 cpSync('web/samples', 'docs/samples', { recursive: true });
 writeFileSync('docs/.nojekyll', '');

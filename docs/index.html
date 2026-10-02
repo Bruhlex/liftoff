@@ -26,12 +26,17 @@
           <label class="btn ghost" for="file">Open file…</label>
           <input id="file" type="file" accept=".js,.mjs,.cjs,.txt,text/javascript" hidden>
           <button class="btn ghost" id="sample" type="button">Load example</button>
+          <button class="btn ghost run-btn" id="runInput" type="button" disabled title="Run the obfuscated program in this page">&#9654; Run</button>
         </div>
       </div>
       <textarea id="input" spellcheck="false" placeholder="Paste a virtualized build here, or drop a .js file onto this box."></textarea>
       <div class="pane-foot">
         <span id="inputInfo" class="muted">No input yet.</span>
         <label class="check"><input type="checkbox" id="skipWebcrack"> skip webcrack normalization</label>
+      </div>
+      <div class="console" id="runInputBox" hidden>
+        <div class="console-head"><span>Console</span><span class="muted" id="runInputInfo"></span></div>
+        <pre id="runInputOut"></pre>
       </div>
     </div>
 
@@ -41,14 +46,21 @@
         <div class="actions">
           <button class="btn ghost" id="copy" type="button" disabled>Copy</button>
           <button class="btn ghost" id="download" type="button" disabled>Download</button>
+          <button class="btn ghost run-btn" id="runOutput" type="button" disabled title="Run the decompiled program in this page">&#9654; Run</button>
         </div>
       </div>
       <pre id="output" class="code" tabindex="0"><span class="muted">The readable program appears here.</span></pre>
       <div class="pane-foot">
         <span id="outputInfo" class="muted"></span>
       </div>
+      <div class="console" id="runOutputBox" hidden>
+        <div class="console-head"><span>Console</span><span class="muted" id="runOutputInfo"></span></div>
+        <pre id="runOutputOut"></pre>
+      </div>
     </div>
   </section>
+
+  <p class="compare" id="compare" role="status" aria-live="polite" hidden></p>
 
   <section class="run">
     <button class="btn primary" id="go" type="button" disabled>Decompile</button>
@@ -107,6 +119,11 @@
       To read the bytecode, the decompiler runs the file's own loader code inside a Web Worker of
       this page, with network and DOM globals hidden. This is not a security sandbox; only decompile
       files you are willing to run.</p>
+    <p class="note"><strong>Run.</strong> Both panes can run their program in a Web Worker of this
+      page and show its console output, so the decompiled program can be checked against the
+      obfuscated one. A worker has no DOM, and Node modules (<code>require</code>) are not
+      available; a program counts as finished when no timer or request is left, and is stopped
+      after 15&nbsp;s otherwise. Run only code you trust.</p>
   </section>
 </main>
 

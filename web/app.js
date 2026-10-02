@@ -30,6 +30,7 @@
     const n = input.value.length;
     $('inputInfo').textContent = n ? `${fileName} · ${fmtBytes(new Blob([input.value]).size)}` : 'No input yet.';
     go.disabled = !n || !!worker;
+    runners.input.sync();
   }
   function setRecovery(st) {
     const box = $('recovery');
@@ -45,15 +46,101 @@
     result = text;
     output.textContent = text;
     copyBtn.disabled = dlBtn.disabled = !text;
+    runners.output.reset();
   }
 
-  input.addEventListener('input', updateInput);
+  // ---- running either pane in a worker ------------------------------------
+  const RUN_TIMEOUT_MS = 15000;
+  const compareEl = $('compare');
+  function makeRunner(key, getCode) {
+    const btn = $(`run${key}`), box = $(`run${key}Box`), out = $(`run${key}Out`), info = $(`run${key}Info`);
+    const r = { lines: null, finished: false, w: null, timer: null };
+    const line = (text, cls) => {
+      const d = document.createElement('div');
+      if (cls) d.className = cls;
+      d.textContent = text;
+      out.appendChild(d);
+      out.scrollTop = out.scrollHeight;
+    };
+    const stop = (msg, cls, finished) => {
+      if (r.w) r.w.terminate();
+      r.w = null;
+      clearTimeout(r.timer);
+      r.finished = finished;
+      info.textContent = msg;
+      info.className = cls || 'muted';
+      btn.innerHTML = '&#9654; Run';
+      r.sync();
+      compare();
+    };
+    r.sync = () => { btn.disabled = !r.w && !getCode(); };
+    r.reset = () => {
+      if (r.w) stop('', '', false);
+      r.lines = null; r.finished = false;
+      box.hidden = true; out.textContent = '';
+      r.sync();
+      compare();
+    };
+    btn.addEventListener('click', () => {
+      if (r.w) { line('stopped', 's'); stop('stopped', 'muted', false); return; }
+      const code = getCode();
+      if (!code) return;
+      out.textContent = '';
+      box.hidden = false;
+      r.lines = []; r.finished = false;
+      info.textContent = 'running …'; info.className = 'muted';
+      btn.textContent = '■ Stop';
+      compare();
+      const t0 = performance.now();
+      r.w = new Worker('runner.js');
+      r.timer = setTimeout(() => { line(`stopped after ${RUN_TIMEOUT_MS / 1000} s`, 's'); stop(`stopped after ${RUN_TIMEOUT_MS / 1000} s`, 'warn', false); }, RUN_TIMEOUT_MS);
+      r.w.onmessage = (e) => {
+        const { type, text } = e.data;
+        if (type === 'done' || type === 'exit') {
+          const ms = Math.round(performance.now() - t0);
+          if (type === 'exit') { r.lines.push(`[exit ${text}]`); line(`process.exit(${text})`, 's'); }
+          stop(`finished in ${ms} ms`, 'muted', true);
+          return;
+        }
+        // stack frames differ between the two programs by construction; compare the message only
+        if (type === 'log') r.lines.push(...text.split('\n'));
+        else r.lines.push(`[${type}] ${type === 'error' ? text.split('\n')[0] : text}`);
+        line(text, type === 'warn' ? 'w' : type === 'error' ? 'e' : '');
+      };
+      r.w.onerror = (e) => { e.preventDefault(); r.lines.push(`[error] ${e.message}`); line(e.message, 'e'); stop('failed', 'err', true); };
+      r.w.postMessage({ code });
+    });
+    return r;
+  }
+  const runners = {
+    input: makeRunner('Input', () => input.value),
+    output: makeRunner('Output', () => result),
+  };
+  function compare() {
+    const a = runners.input, b = runners.output;
+    if (!a.finished || !b.finished) { compareEl.hidden = true; return; }
+    compareEl.hidden = false;
+    const n = Math.max(a.lines.length, b.lines.length);
+    let i = 0;
+    while (i < n && a.lines[i] === b.lines[i]) i++;
+    if (i === n) {
+      compareEl.textContent = `Both programs printed the same console output (${n} line${n === 1 ? '' : 's'}).`;
+      compareEl.className = 'compare ok';
+    } else {
+      const show = (x) => (x === undefined ? '(nothing)' : JSON.stringify(x.length > 120 ? `${x.slice(0, 120)}…` : x));
+      compareEl.textContent = `The console output differs at line ${i + 1}: obfuscated ${show(a.lines[i])}, decompiled ${show(b.lines[i])}.`;
+      compareEl.className = 'compare err';
+    }
+  }
+
+  input.addEventListener('input', () => { updateInput(); runners.input.reset(); });
 
   async function loadFile(file) {
     if (!file) return;
     fileName = file.name || 'input.js';
     input.value = await file.text();
     updateInput();
+    runners.input.reset();
   }
   $('file').addEventListener('change', (e) => loadFile(e.target.files[0]));
   input.addEventListener('dragover', (e) => { e.preventDefault(); input.classList.add('drag'); });
@@ -72,6 +159,7 @@
       fileName = 'example.js';
       input.value = await r.text();
       updateInput();
+      runners.input.reset();
       setStatus('Example loaded: a small program, virtualized with obfuscator.io.');
     } catch (e) { setStatus(`Could not load the example: ${e.message}`, 'err'); }
   });
