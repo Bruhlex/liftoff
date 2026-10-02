@@ -761,7 +761,6 @@ class Lifter {
     let stack = inStack.slice();
     const emit = (s) => stmts.push(s);
     let pc = start;
-    const ctxR = { state, stmts, emit, end };
 
     while (pc < end) {
       const [op, operand] = state.instrs[pc];
@@ -1277,7 +1276,6 @@ class Lifter {
         return { cond, jumpWhenTrue: true, jumpStackOverride: jumpStack };
       }
       case 'FUSED_JMPT': case 'FUSED_JMPF': {
-        const e = this.entry(state.instrs[state.__pc ?? 0][0]);
         return null; // handled by caller via fusedCond
       }
       default: return { cond: t.booleanLiteral(true), jumpWhenTrue: true };
@@ -1380,7 +1378,6 @@ class Lifter {
     this.hoistBaseSpills(base, [fall, other], stack, emit, sharedNodes, cond);
     state.alive.delete(cond);
 
-    const fallVal = fall.stack.length === base.length - (m === 'JMPF_KEEP' || m === 'JMPT_KEEP' ? 0 : 1) + (m.endsWith('_POP2') ? 0 : 1) - (m.endsWith('_POP2') ? 0 : 0);
     // expression form: no statements on either side and both paths end with one more value than
     // the common prefix
     const common = Math.min(fall.stack.length, other.stack.length);
@@ -1567,7 +1564,6 @@ class Lifter {
       const testsHere = tests.filter((x) => x.target === B);
       const body = this.liftRange(state, B, bEnd, []);
       for (const v of body.stack) if (!isPure(v)) body.stmts.push(t.expressionStatement(v));
-      const isLast = i === targets.length - 1;
       // label(s)
       const labels = testsHere.map((x) => caseExprs[tests.indexOf(x)]);
       if (defaultTarget === B) labels.push(null);
@@ -2015,7 +2011,6 @@ class Lifter {
       // non-virtualized function). The compiler keeps the variable's name as a string constant for
       // the TDZ error message; if the program has exactly one identifier-like string constant that
       // no instruction refers to, and only one such unknown slot, that is the name.
-      const key = `${state.curPc >= 0 ? state.prog.id : ''}`;
       const unknown = new Set();
       state.instrs.forEach(([op, operand], pc) => {
         if (this.mnem(op) === 'LOAD_SCOPE' || this.mnem(op) === 'STORE_SCOPE') {
@@ -2434,7 +2429,7 @@ class Lifter {
       case 'SUPER_CALL': {
         const argc = this.popLit(stack);
         const args = this.popN(stack, argc);
-        const callee = pop();
+        pop(); // the callee, always `super`
         if (operand === 1) { push(t.arrayExpression(args)); return; }
         this.emitStatement(state, stack, emit, t.expressionStatement(t.callExpression(t.super(), args)));
         return;

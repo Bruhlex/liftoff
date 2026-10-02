@@ -97,7 +97,18 @@ not needed. Node ≥ 18.
 `src/pipeline.js` ties the steps together and is shared by the CLI (`index.js`) and
 the web build (`web/worker-entry.js`). Nothing about a build is hard-coded: opcode
 numbers, byte format, alphabet, slot layout and dispatcher are inferred from each
-file. Details are in [DESIGN.md](DESIGN.md) and [TOOL_NOTES.md](TOOL_NOTES.md).
+file. Details are in [DESIGN.md](DESIGN.md).
+
+### Output conventions
+
+* Parameters keep their host names when the stub passes `arguments` (partial
+  builds); otherwise they are `a0, a1, …`.
+* VM registers become `r1, r2, …`; compiler temporaries are inlined.
+* Block-scoped variables use the name stored for the TDZ check when the
+  obfuscator kept one, otherwise `s<frame>_<slot>`.
+* `for..of` / `for..in` loop variables are `item`, `key` (numbered on clash).
+* Programs present in the bytecode but never called by the host code are
+  emitted as comments.
 
 ## Tests
 
@@ -110,11 +121,12 @@ npm run test:web       # runs the pipeline with the browser shims and compares w
 The tests run the obfuscated build and the decompiled program and compare their
 output. The clean sources in `corpus/src/` are used only to tell quirks of the
 obfuscated build itself from decompiler errors; they are never an input of the
-decompiler.
+decompiler. A sample whose build does not run as it is (`samples/http-client.js`)
+is compared with its source `samples/http-client.src.js` instead.
 
 | set | content | result |
 |---|---|---|
-| `samples/` | 16 builds from two code-generator versions | all reproduce the original output |
+| `samples/` | 17 builds from two code-generator versions | all reproduce the original output; no decompiled file assigns to an undeclared variable |
 | `corpus/builds/` | 120 builds of 83 programs (obfuscator.io 8.0.6, eight option sets: VM only, + string array, + control-flow flattening, + expression obfuscation, all, raw, Node target) | all 120 behave like the build; two carry a documented one-line difference (`corpus/expected-divergence.json`) |
 
 ## Layout

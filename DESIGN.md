@@ -1,7 +1,7 @@
 # Design notes: decompiling obfuscator.io's Virtualization VM
 
 This document records what the VM looks like, which parts of it vary from
-build to build, and how each stage of `vmdecompile` recovers what it needs
+build to build, and how each stage of Liftoff recovers what it needs
 without depending on any of the varying parts. It is written to be usable as
 methodology material for the thesis.
 

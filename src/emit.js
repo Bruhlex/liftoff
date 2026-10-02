@@ -19,7 +19,7 @@ const t = require('@babel/types');
 const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
-const { parse, gen } = require('./locate');
+const { gen } = require('./locate');
 const { Lifter, Frame, isIdentName } = require('./lift');
 
 // ---------------------------------------------------------------------------
@@ -202,8 +202,6 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {} } = {}) {
         for (const st of prelude) t.traverseFast(st, (n) => { if (t.isVariableDeclarator(n) && n.init === roles.args) n.init = t.identifier('__args'); });
         prelude.unshift(t.variableDeclaration('const', [t.variableDeclarator(t.identifier('__args'), t.cloneNode(roles.args, true))]));
       }
-      // keep the host function's own directives
-      const directives = t.isBlockStatement(fnNode.body) ? fnNode.body.directives : [];
       let params = fnNode.params.slice();
       if (!keepHostParams) {
         const rest = fn.params.find((p) => t.isRestElement(p));

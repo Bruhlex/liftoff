@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * End-to-end regression test: decompile every VM-protected sample next to this
- * tool (../*.js, i.e. out.js, test1..6.js, fib.js), run the original and the
+ * End-to-end regression test: decompile every VM-protected build in samples/
+ * (out.js, test<n>.js, fib.js, http-client.js), run the original and the
  * decompiled script under Node and compare their standard output. If a source file
  * <name>.src.js exists, the decompiled script is compared with it instead of the build (for
  * builds that do not run as they are). Every output is also checked for assignments to
@@ -20,7 +20,7 @@ const here = path.resolve(__dirname, '..');
 const samplesDir = path.resolve(here, 'samples');
 const args = process.argv.slice(2);
 const files = args.length ? args : fs.readdirSync(samplesDir).filter((f) => /^(out|test\d+|fib|http-client)\.js$/.test(f)).map((f) => path.join(samplesDir, f));
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vmdec-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'liftoff-'));
 const divergence = JSON.parse(fs.readFileSync(path.join(__dirname, 'expected-divergence.json'), 'utf8'));
 let failures = 0;
 for (const file of files) {

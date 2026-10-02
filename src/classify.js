@@ -144,9 +144,6 @@ function canonicalize(handler, roles, helpers, { normal = false } = {}) {
 // ---------------------------------------------------------------------------
 
 const count = (s, re) => (s.match(re) || []).length;
-const POP = /S\[--SP\]/g;
-const PUSH = /S\[SP\+\+\]=/g;
-const BIN_OPS = ['**', '>>>', '<<', '>>', '<=', '>=', '===', '!==', '==', '!=', '*', '/', '%', '^', '+', '-', '|', '&', '<', '>', 'in', 'instanceof'];
 const BIN_RE = /^let v0=S\[--SP\];let v1=S\[--SP\];S\[SP\+\+\]=v1(\*\*|>>>|<<|>>|<=|>=|===|!==|==|!=|\*|\/|%|\^|\+|-|\||&|<|>| in | instanceof )v0;PC\+\+;$/;
 const FUSED_RE = /^let v0=OP&65535;let v1=OP>>>16;S\[SP\+\+\]=R\[v0\](\*\*|>>>|<<|>>|<=|>=|===|!==|==|!=|\*|\/|%|\^|\+|-|\||&|<|>)K\[v1\];PC\+\+;$/;
 const ROT_RE = /^let v0=S\[SP-3\];let v1=S\[SP-2\];let v2=S\[SP-1\];S\[SP-3\]=(v\d);S\[SP-2\]=(v\d);S\[SP-1\]=(v\d);PC\+\+;$/;
@@ -469,7 +466,7 @@ function loadSignatures() {
     const custom = typeof process !== 'undefined' && process.env && process.env.VMDEC_SIGNATURES;
     const db = custom ? JSON.parse(require('fs').readFileSync(custom, 'utf8')) : require('./signatures.json');
     for (const [k, v] of Object.entries(db.signatures || {})) signatureCache.set(k, v);
-  } catch (e) { /* no database yet */ }
+  } catch { /* no database yet */ }
   return signatureCache;
 }
 

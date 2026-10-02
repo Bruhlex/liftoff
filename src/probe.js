@@ -83,12 +83,12 @@ function makeFingerprinter(ignore) {
     if (depth <= 0 || seen.has(v)) return `#${idOf(v)}`;
     seen.add(v);
     let keys;
-    try { keys = Reflect.ownKeys(v); } catch (e) { return `#${idOf(v)}`; }
+    try { keys = Reflect.ownKeys(v); } catch { return `#${idOf(v)}`; }
     if (keys.length > 300) return `#${idOf(v)}:${keys.length}`;
     const parts = [];
     for (const k of keys) {
       let d;
-      try { d = Object.getOwnPropertyDescriptor(v, k); } catch (e) { continue; }
+      try { d = Object.getOwnPropertyDescriptor(v, k); } catch { continue; }
       if (!d) continue;
       const val = 'value' in d ? fpValue(d.value, depth - 1, seen) : 'accessor';
       parts.push(`${String(k)}=${val}`);
@@ -229,7 +229,7 @@ const BINARY = [
 ];
 
 const same = (x, y) => Object.is(x, y);
-const safe = (f) => { try { return { ok: true, v: f() }; } catch (e) { return { ok: false }; } };
+const safe = (f) => { try { return { ok: true, v: f() }; } catch { return { ok: false }; } };
 
 /** Deeper stack slots first (natural left-to-right operand order), then R, A, scope, K, operand values. */
 function orderLeaves(keys) {
@@ -437,7 +437,6 @@ function toCondMnemonic({ cond, taken, fall }) {
 
 function inferCall(X, prog, opcode, ctx) {
   const env = makeEnvironments()[0];
-  const leafName = (v, byObj) => byObj.get(v);
   const tryVariant = (numeric, argc) => {
     const results = [];
     for (const operand of OPERANDS) {
@@ -452,20 +451,6 @@ function inferCall(X, prog, opcode, ctx) {
     return results;
   };
   // Map proxies back to leaf keys: re-derive from reads (same proxy objects are cached per observe)
-  const describe = (res) => {
-    const out = [];
-    for (const { obs, operand, call } of res) {
-      const keyOf = new Map();
-      // rebuild the leaf key of each proxy by index: proxies were created lazily per tag/idx
-      for (const [tag, idx] of obs.reads) {
-        if (tag === 'J') continue;
-        // the value the handler saw is not recorded directly; use stack snapshot for S
-      }
-      out.push({ obs, operand, call, keyOf });
-    }
-    return out;
-  };
-  void describe; void leafName;
   // argument count from the stack top
   const variants = [
     { name: 'stack', numeric: (tag, idx) => tag === 'S' && idx === SP0 - 1 },
@@ -504,8 +489,6 @@ function callShape(obs, call) {
   for (let i = 0; i < SP0; i++) if (!stackKey.has(obs.initialStack[i])) stackKey.set(obs.initialStack[i], `S:${SP0 - 1 - i}`);
   // obs.stack is the final stack; the initial contents are gone for popped slots.
   // Popped slots keep their old values in the backing array unless overwritten.
-  const initial = obs.initialStack || obs.stack;
-  void initial;
   const keyOf = (v) => (v === undefined ? 'undefined' : stackKey.get(v) || null);
   const kind = call[0];
   const callee = call[1] && call[1].startsWith('S/') ? `S:${SP0 - 1 - Number(call[1].slice(2))}` : null;
@@ -528,13 +511,13 @@ function inferClosure(X, prog, opcode, ctx) {
   let r;
   try {
     r = X.step(...X.stepArgs(prog, { codeSize: 64, pc: PC0, op: opcode, operand: 0, stack: [prog], sp: 1, NORET }));
-  } catch (e) { return null; }
+  } catch { return null; }
   if (r.threw !== NORET || r.ret !== NORET || r.pc !== PC0 + 1 || r.sp !== 1) return null;
   const fn = r.stack[0];
   if (typeof fn !== 'function' || fn === prog) return null;
   // a second run with a different program must give a different function
   let r2;
-  try { r2 = X.step(...X.stepArgs(prog, { codeSize: 64, pc: PC0, op: opcode, operand: 0, stack: [prog], sp: 1, NORET })); } catch (e) { return null; }
+  try { r2 = X.step(...X.stepArgs(prog, { codeSize: 64, pc: PC0, op: opcode, operand: 0, stack: [prog], sp: 1, NORET })); } catch { return null; }
   if (r2.stack[0] === fn) return null;
   return { mnemonic: 'MAKE_CLOSURE' };
 }
@@ -557,7 +540,7 @@ function inferUnknown(X, vm, opcodes) {
     for (const op of opcodes) {
       let e = null;
       for (const probe of [inferData, inferCall, inferClosure]) {
-        try { e = probe(X, prog, op, ctx); } catch (err) { e = null; }
+        try { e = probe(X, prog, op, ctx); } catch { e = null; }
         if (e) break;
       }
       if (e) out.set(op, { ...e, inferred: true });

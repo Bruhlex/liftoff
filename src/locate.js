@@ -606,7 +606,6 @@ function yieldOpcodes(inner, fetch, factoryPath) {
     let ret = null;
     t.traverseFast(st.consequent, (n) => { if (!ret && t.isReturnStatement(n) && t.isObjectExpression(n.argument)) ret = n.argument; });
     if (!ret) continue;
-    const tagProp = ret.properties.find((p) => t.isIdentifier(p.value) && !/^\w{2}$/.test('') );
     // first property whose value is an identifier that is a factory-level constant
     let tag = null, tagKey = null;
     for (const p of ret.properties) {

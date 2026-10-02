@@ -26,7 +26,7 @@ const li = args.indexOf('--levels');
 const levels = li >= 0 ? args[li + 1].split(',').map(Number) : [0, 1, 2, 3];
 const allSamples = fs.readdirSync(samplesDir).filter((f) => /^(out|test\d+|fib)\.js$/.test(f)).map((f) => path.join(samplesDir, f));
 const targets = args.filter((a, i) => !a.startsWith('--') && (li < 0 || i !== li + 1));
-const work = fs.mkdtempSync(path.join(os.tmpdir(), 'vmdec-rob-'));
+const work = fs.mkdtempSync(path.join(os.tmpdir(), 'liftoff-rob-'));
 const node = (argv, env = {}) => spawnSync('node', argv, { encoding: 'utf8', timeout: 900000, env: { ...process.env, ...env } });
 
 const rows = [];

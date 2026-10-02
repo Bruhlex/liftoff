@@ -49,42 +49,6 @@ function buildPrologueFunction(vm) {
   return t.functionExpression(null, params.map((p) => t.identifier(p)), t.blockStatement([...prologue.map((s) => t.cloneNode(s, true)), ret]));
 }
 
-function stripTrailingBreak(stmts) {
-  const out = stmts.map((s) => t.cloneNode(s, true));
-  const last = out[out.length - 1];
-  if (last && (t.isBreakStatement(last) || t.isContinueStatement(last)) && !last.label) out.pop();
-  return out;
-}
-
-function buildMakeClosureFunction(vm, table) {
-  const entry = [...table.entries()].find(([, e]) => e.mnemonic === 'MAKE_CLOSURE');
-  if (!entry) return null;
-  const opcode = entry[0];
-  const handler = vm.handlers.find((h) => h.opcode === opcode);
-  const fn = vm.plain.fnPath.node;
-  const prologue = prologueStatements(fn, vm.plain.loop.outerPath.node);
-  const { roles } = vm;
-  const params = roles.params;
-  const body = [
-    ...prologue.map((s) => t.cloneNode(s, true)),
-    // stack[sp++] = __nested;
-    t.expressionStatement(t.assignmentExpression('=', t.memberExpression(t.identifier(roles.stack), t.updateExpression('++', t.identifier(roles.sp)), true), t.identifier('__nested'))),
-    t.blockStatement([
-      t.variableDeclaration('let', [t.variableDeclarator(t.identifier(handler.operandVar), t.numericLiteral(0))]),
-      ...(handler.opVar !== handler.operandVar && handler.opVar !== vm.plain.fetch.op
-        ? [t.variableDeclaration('let', [t.variableDeclarator(t.identifier(handler.opVar), t.numericLiteral(opcode))])]
-        : []),
-      ...(handler.operandVar !== vm.plain.fetch.operand
-        ? [t.variableDeclaration('let', [t.variableDeclarator(t.identifier(vm.plain.fetch.operand), t.numericLiteral(0))]),
-           t.variableDeclaration('let', [t.variableDeclarator(t.identifier(vm.plain.fetch.op), t.numericLiteral(opcode))])]
-        : []),
-      ...stripTrailingBreak(handler.body),
-    ]),
-    t.returnStatement(t.memberExpression(t.identifier(roles.stack), t.binaryExpression('-', t.identifier(roles.sp), t.numericLiteral(1)), true)),
-  ];
-  return t.functionExpression(null, [...params.map((p) => t.identifier(p)), t.identifier('__nested')], t.blockStatement(body));
-}
-
 /**
  * Synthesize a single-step function from the interpreter itself:
  * prologue (resolves the program exactly like the VM) + overrides for the state
@@ -308,7 +272,7 @@ function createSandbox(vm) {
     if (ci >= 0) a[ci] = function __callee() {};
     return [...a, P];
   };
-  X.firstProgram = () => { try { return X.mainLoader(0); } catch (e) { return null; } };
+  X.firstProgram = () => { try { return X.mainLoader(0); } catch { return null; } };
   return { X, built };
 }
 
@@ -340,7 +304,7 @@ function extractPrograms(vm, table, { log = () => {}, sandbox = null } = {}) {
     if (!loader) return;
     for (let i = 0; i < 100000; i++) {
       let p;
-      try { p = loader(i); } catch (e) { break; }
+      try { p = loader(i); } catch { break; }
       if (!p) break;
       addProgram(p, source, i);
     }
