@@ -245,7 +245,11 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {} } = {}) {
   // lifted programs reach the namespace through its global key (differs with "Rename Globals")
   const isNS = (n) => t.isIdentifier(n) && (n.name === nsName || (vm.nsKey && n.name === vm.nsKey));
   const isEntry = (n) => t.isIdentifier(n, { name: entryName });
-  const onNS = (n) => (t.isMemberExpression(n) && (isNS(n.object) || onNS(n.object) || isEntry(n.object) || t.isIdentifier(n.object, { name: 'globalThis' })));
+  // a member chain on the namespace is bookkeeping unless it goes through a user binding the
+  // namespace carries (`NS.vault.locked = true` is the program's own `vault.locked = true`)
+  const memberKey = (n) => (n.computed ? (t.isStringLiteral(n.property) ? n.property.value : null) : n.property.name);
+  const userBinding = (n) => t.isMemberExpression(n) && isNS(n.object) && (() => { const k = memberKey(n); return k !== null && isIdentName(k) && !/^_\$/.test(k); })();
+  const onNS = (n) => (t.isMemberExpression(n) && (isNS(n.object) || (onNS(n.object) && !userBinding(n.object)) || isEntry(n.object) || t.isIdentifier(n.object, { name: 'globalThis' })));
   const isBoilerExpr = (e) => {
     if (t.isSequenceExpression(e)) return e.expressions.every(isBoilerExpr);
     if (t.isAssignmentExpression(e) && onNS(e.left)) return true;
@@ -346,6 +350,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {} } = {}) {
     });
   }
   restorePrivateMembers(file, privateSymbols, warn);
+  foldDerivedFieldInitializers(file);
   t.traverseFast(file, (n) => { if (t.isClassPrivateMethod(n) && n.body.directives) n.body.directives = n.body.directives.filter((d) => d.value.value !== 'use strict'); });
   stripIllegalStrict(file);
   t.traverseFast(file, (n) => {
@@ -394,6 +399,93 @@ function containsOwn(stmts, pred) {
 // with a WeakSet brand check before every call. The original names are gone;
 // the members are restored as `#field_N` / `#method_N`.
 // ---------------------------------------------------------------------------
+
+/**
+ * Instance fields of a derived class are initialized after `super()` by a function the compiler
+ * creates outside the class and the constructor calls as `init.call(this)`:
+ *
+ *   const init = function () { const set = (x) => { <brand>; return this.#f = x; }; set(v); this.p = w; };
+ *   class C extends B { constructor() { super(); init.call(this); ... } }
+ *
+ * When every statement of `init` is such a field setup, it becomes the field declarations
+ * `#f = v; p = w;` of the class again (fields of a derived class run right after super()).
+ */
+function foldDerivedFieldInitializers(file) {
+  traverse.cache.clear();
+  traverse(file, {
+    Class(cp) {
+      if (!cp.node.superClass) return;
+      const body = cp.node.body.body;
+      const ctor = body.find((m) => t.isClassMethod(m, { kind: 'constructor' }));
+      if (!ctor) return;
+      const stmts = ctor.body.body;
+      const superIdx = stmts.findIndex((st) => t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isSuper(st.expression.callee));
+      if (superIdx < 0) return;
+      const callSt = stmts[superIdx + 1];
+      const call = callSt && t.isExpressionStatement(callSt) && t.isCallExpression(callSt.expression) ? callSt.expression : null;
+      if (!call || !t.isMemberExpression(call.callee) || !t.isIdentifier(call.callee.property, { name: 'call' }) || !t.isIdentifier(call.callee.object) ||
+          call.arguments.length !== 1 || !t.isThisExpression(call.arguments[0])) return;
+      const b = cp.scope.getBinding(call.callee.object.name);
+      if (!b || !b.path.isVariableDeclarator() || b.constantViolations.length || b.referencePaths.length !== 1) return;
+      const fn = b.path.node.init;
+      if (!t.isFunctionExpression(fn) || fn.params.length || fn.async || fn.generator) return;
+      // brand bookkeeping of the WeakMap lowering: `C.wm.has(this) || C.wm.set(this, ...)`
+      const isBrand = (st) => t.isExpressionStatement(st) && t.isLogicalExpression(st.expression, { operator: '||' }) &&
+        t.isCallExpression(st.expression.left) && t.isMemberExpression(st.expression.left.callee) && t.isIdentifier(st.expression.left.callee.property, { name: 'has' });
+      const setters = new Map(); // arrow name -> private name
+      const fields = [];
+      for (const st of fn.body.body) {
+        if (isBrand(st)) continue;
+        // `let set;` declared ahead of its assignment
+        if (t.isVariableDeclaration(st) && st.declarations.every((d) => t.isIdentifier(d.id) && !d.init)) continue;
+        // const set = (x) => { <brand>; return this.#f = x; }   or   set = (x) => ...
+        const setterDecl = t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && t.isArrowFunctionExpression(st.declarations[0].init)
+          ? { name: st.declarations[0].id.name, a: st.declarations[0].init }
+          : t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) && t.isArrowFunctionExpression(st.expression.right)
+            ? { name: st.expression.left.name, a: st.expression.right } : null;
+        if (setterDecl) {
+          const a = setterDecl.a;
+          if (a.params.length !== 1 || !t.isIdentifier(a.params[0])) return;
+          const p = a.params[0].name;
+          const ret = t.isBlockStatement(a.body) ? a.body.body : [t.returnStatement(a.body)];
+          if (!ret.slice(0, -1).every(isBrand)) return;
+          const last = ret[ret.length - 1];
+          const e = t.isReturnStatement(last) ? last.argument : null;
+          if (!e || !t.isAssignmentExpression(e, { operator: '=' }) || !t.isMemberExpression(e.left) || !t.isThisExpression(e.left.object) ||
+              !t.isPrivateName(e.left.property) || !t.isIdentifier(e.right, { name: p })) return;
+          setters.set(setterDecl.name, e.left.property.id.name);
+          continue;
+        }
+        // set(v)
+        if (t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isIdentifier(st.expression.callee) && setters.has(st.expression.callee.name) && st.expression.arguments.length === 1) {
+          const v = st.expression.arguments[0];
+          fields.push(t.classPrivateProperty(t.privateName(t.identifier(setters.get(st.expression.callee.name))), t.isIdentifier(v, { name: 'undefined' }) ? null : v));
+          continue;
+        }
+        // this[__vmwm__$pib_N] = <install brand>: the brand of the class's #methods, implicit in the class
+        if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isMemberExpression(st.expression.left) &&
+            t.isThisExpression(st.expression.left.object) && st.expression.left.computed) {
+          let install = false;
+          t.traverseFast(st.expression.right, (x) => { if (t.isStringLiteral(x) && /install private/.test(x.value)) install = true; });
+          if (install) continue;
+        }
+        // this.p = w
+        if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isMemberExpression(st.expression.left) &&
+            t.isThisExpression(st.expression.left.object)) {
+          const l = st.expression.left;
+          const v = st.expression.right;
+          fields.push(t.classProperty(l.property, t.isIdentifier(v, { name: 'undefined' }) ? null : v, null, null, l.computed));
+          continue;
+        }
+        return; // anything else: leave as it is
+      }
+      if (!fields.length) return;
+      cp.node.body.body = [...fields, ...body];
+      stmts.splice(superIdx + 1, 1);
+      b.path.remove();
+    },
+  });
+}
 
 function restorePrivateMembers(file, privateSymbols, warn) {
   const privName = (key) => {
@@ -480,7 +572,7 @@ function restorePrivateMembers(file, privateSymbols, warn) {
         }
       }
       let hit = false;
-      t.traverseFast(n.init, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value)) hit = true; });
+      t.traverseFast(n.init, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) hit = true; });
       if (hit) {
         const b = p.scope.getBinding(n.id.name);
         if (b) brandHelpers.add(b.identifier);
@@ -502,7 +594,7 @@ function restorePrivateMembers(file, privateSymbols, warn) {
         return;
       }
       let hit = false;
-      t.traverseFast(e.right, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value)) hit = true; });
+      t.traverseFast(e.right, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) hit = true; });
       if (!hit) return;
       const b = p.scope.getBinding(e.left.name);
       if (!b || b.constantViolations.some((v) => v.node !== e && !(t.isAssignmentExpression(v.node) && t.isFunction(v.node.right)))) return;
@@ -521,7 +613,7 @@ function restorePrivateMembers(file, privateSymbols, warn) {
         if (b && b.constantViolations.length === 1) { inHelpers.set(b.identifier, inKey); p.remove(); return; }
       }
       let hit = false;
-      t.traverseFast(e.right, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value)) hit = true; });
+      t.traverseFast(e.right, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) hit = true; });
       if (hit) {
         const b = p.scope.getBinding(e.left.name);
         if (b && b.constantViolations.length === 1) { brandHelpers.add(b.identifier); p.remove(); }

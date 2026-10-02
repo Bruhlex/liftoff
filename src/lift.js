@@ -940,7 +940,9 @@ class Lifter {
     const list = Object.entries(jumps).map(([f, to]) => [Number(f), to]).filter(([f]) => f > pc && f < regionEnd);
     let best = null;
     for (const [f, T] of list) {
-      if (!UNCOND_JUMP.has(this.mnem(instrs[f][0])) || T <= f || T >= end || (T !== jumps[pc] && T !== regionEnd) || resolved(T)) continue;
+      // the target is the end of this conditional or a point behind it (`out: { if (..) {.. break out ..} more; }`);
+      // targets inside it belong to nested constructs (switch breaks)
+      if (!UNCOND_JUMP.has(this.mnem(instrs[f][0])) || T <= f || T >= end || T < regionEnd || resolved(T)) continue;
       // a break out of an inner loop or try region is structured there
       if ([...state.loopEnds].some(([H, L]) => H > pc && H <= f && f <= L)) continue;
       if (Object.entries(state.tries).some(([tp, tr]) => tr && Number(tp) > pc && Number(tp) < f && (tr[2] === null || tr[2] >= f))) continue;
