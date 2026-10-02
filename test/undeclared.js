@@ -20,7 +20,10 @@ function check(file) {
     AssignmentExpression(p) {
       const left = p.node.left;
       if (left.type !== 'Identifier') return;
-      if (!p.scope.hasBinding(left.name, true) && !(left.name in globalThis)) {
+      // `typeof x == "number" && (x = ...)`: a guarded write to a global that may exist (core-js)
+      const guarded = p.findParent((q) => (q.isLogicalExpression() || q.isIfStatement() || q.isConditionalExpression()) &&
+        JSON.stringify(q.node.left || q.node.test || {}).includes(`"operator":"typeof","prefix":true,"argument":{"type":"Identifier"`) && JSON.stringify(q.node.left || q.node.test).includes(`"name":"${left.name}"`));
+      if (!guarded && !p.scope.hasBinding(left.name, true) && !(left.name in globalThis)) {
         hits.push(`${left.name} (line ${left.loc.start.line})`);
       }
     },

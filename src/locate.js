@@ -590,11 +590,33 @@ function findNamespaceKey(ast, globalName, nsName) {
   return null;
 }
 
+/**
+ * The object literal returned in `block`: `return {...}`, or `var o = {...}; return o;` as builds
+ * with transformObjectKeys write it.
+ */
+function returnedObject(block) {
+  let found = null;
+  t.traverseFast(block, (n) => {
+    if (found) return;
+    const body = t.isBlockStatement(n) ? n.body : null;
+    if (!body) return;
+    for (let i = 0; i < body.length && !found; i++) {
+      const st = body[i];
+      if (!t.isReturnStatement(st)) continue;
+      if (t.isObjectExpression(st.argument)) found = st.argument;
+      else if (t.isIdentifier(st.argument) && i > 0 && t.isVariableDeclaration(body[i - 1]) && body[i - 1].declarations.length === 1 &&
+          t.isIdentifier(body[i - 1].declarations[0].id, { name: st.argument.name }) && t.isObjectExpression(body[i - 1].declarations[0].init)) found = body[i - 1].declarations[0].init;
+    }
+  });
+  if (!found && t.isReturnStatement(block) && t.isObjectExpression(block.argument)) found = block.argument;
+  return found;
+}
+
 function isGeneratorCopy(inner, fetch) {
   // generator interpreter: `if (op === CONST) { ...; return {...} }` guards before dispatch
   return inner.body.body.some(
     (st) => t.isIfStatement(st) && t.isBinaryExpression(st.test, { operator: '===' }) && t.isIdentifier(st.test.left, { name: fetch.op }) && t.isIdentifier(st.test.right) &&
-      containsNode(st.consequent, (n) => t.isReturnStatement(n) && t.isObjectExpression(n.argument)),
+      returnedObject(st.consequent),
   );
 }
 
@@ -603,8 +625,7 @@ function yieldOpcodes(inner, fetch, factoryPath) {
   const out = [];
   for (const st of inner.body.body) {
     if (!(t.isIfStatement(st) && t.isBinaryExpression(st.test, { operator: '===' }) && t.isIdentifier(st.test.left, { name: fetch.op }) && t.isIdentifier(st.test.right))) continue;
-    let ret = null;
-    t.traverseFast(st.consequent, (n) => { if (!ret && t.isReturnStatement(n) && t.isObjectExpression(n.argument)) ret = n.argument; });
+    const ret = returnedObject(st.consequent);
     if (!ret) continue;
     // first property whose value is an identifier that is a factory-level constant
     let tag = null, tagKey = null;

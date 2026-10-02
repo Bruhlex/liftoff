@@ -930,6 +930,7 @@ class Lifter {
   deepBreakTarget(state, pc, end) {
     const { jumps, instrs } = state;
     let regionEnd = jumps[pc];
+    // (a jump to the end of the range being lifted is a plain fallthrough there)
     if (!(regionEnd > pc) || regionEnd > end) return null;
     const before = regionEnd - 1;
     // an `else` branch: the then-branch ends with a plain jump over it
@@ -939,7 +940,7 @@ class Lifter {
     const list = Object.entries(jumps).map(([f, to]) => [Number(f), to]).filter(([f]) => f > pc && f < regionEnd);
     let best = null;
     for (const [f, T] of list) {
-      if (!UNCOND_JUMP.has(this.mnem(instrs[f][0])) || T <= f || T > end || T < jumps[pc] || resolved(T)) continue;
+      if (!UNCOND_JUMP.has(this.mnem(instrs[f][0])) || T <= f || T >= end || (T !== jumps[pc] && T !== regionEnd) || resolved(T)) continue;
       // a break out of an inner loop or try region is structured there
       if ([...state.loopEnds].some(([H, L]) => H > pc && H <= f && f <= L)) continue;
       if (Object.entries(state.tries).some(([tp, tr]) => tr && Number(tp) > pc && Number(tp) < f && (tr[2] === null || tr[2] >= f))) continue;
@@ -1490,6 +1491,13 @@ class Lifter {
         a = rep(a); b = rep(b); fallCond = jumpWhenTrue ? this.negate(t.identifier(id.name)) : t.identifier(id.name);
         fall.stmts = fall.stmts.map(rep); other.stmts = other.stmts.map(rep);
       }
+      // bookkeeping stores of an idiom lifted inside a branch (iterator registers of a
+      // destructuring) are dropped here, before the branch becomes an expression
+      const hidden = new Set([...state.hiddenRegs].map((r) => this.regName(state, r)));
+      const isBookkeeping = (x) => x.__remove || (t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression, { operator: '=' }) &&
+        t.isIdentifier(x.expression.left) && hidden.has(x.expression.left.name) && (t.isLiteral(x.expression.right) || t.isIdentifier(x.expression.right)));
+      fall.stmts = fall.stmts.filter((x) => !isBookkeeping(x));
+      other.stmts = other.stmts.filter((x) => !isBookkeeping(x));
       const exprOnly = (st) => st.every((x) => t.isExpressionStatement(x));
       let expr;
       if (exprOnly(fall.stmts) && exprOnly(other.stmts)) {
@@ -1916,7 +1924,7 @@ class Lifter {
     const stmtHasCall = stmt ? containsCall(stmt) : true;
     for (let i = 0; i < stack.length; i++) {
       const v = stack[i];
-      if (v && v.__builder && (t.isObjectExpression(v) || t.isArrayExpression(v)) && (!stmt || stmtHasCall || assigned.size || props.size)) { this.spillBuilder(v, emit); continue; }
+      if (v && v.__builder && (t.isObjectExpression(v) || t.isArrayExpression(v)) && (!stmt || stmtHasCall || assigned.size || props.size)) { this.spillBuilder(v, emit, assigned, props); continue; }
       if (!v || v.__underflow || v.__marker || v.__builder) continue;
       if (t.isLiteral(v) || t.isThisExpression(v) || t.isFunctionExpression(v) || t.isArrowFunctionExpression(v)) continue;
       if (t.isSpreadElement(v)) {
@@ -1948,15 +1956,17 @@ class Lifter {
    *  (calls etc.) precede any statement emitted now: move those into temporaries */
   tmpName() { return fresh(`_t${this.tempCounter++}`); }
 
-  spillBuilder(b, emit) {
+  spillBuilder(b, emit, assigned = null, props = null) {
+    // a pure value (e.g. a variable read) is affected only by a statement that writes what it reads
+    const touched = (v) => (assigned && [...assigned].some((n) => referencesName(v, n))) || (props && props.size && readsProps(v, props));
     const slots = t.isObjectExpression(b) ? b.properties.filter((p) => t.isObjectProperty(p) || t.isSpreadElement(p)).map((p) => (t.isSpreadElement(p) ? [p, 'argument'] : [p, 'value']))
       : t.isArrayExpression(b) ? b.elements.map((e, k) => (e ? [b.elements, k] : null)).filter(Boolean) : [];
     if (t.isObjectExpression(b)) for (const p of b.properties) if (t.isObjectProperty(p) && p.computed && !isPure(p.key)) slots.push([p, 'key']);
     for (const [holder, key] of slots) {
       let v = holder[key];
       if (t.isSpreadElement(v)) { holder[key] = v; const inner = v; if (!isPure(inner.argument)) { const id = t.identifier(this.tmpName()); emit(t.variableDeclaration('const', [t.variableDeclarator(id, inner.argument)])); inner.argument = id; } continue; }
-      if (!v || isPure(v) || t.isFunctionExpression(v) || t.isArrowFunctionExpression(v)) continue;
-      if (v.__builder) { this.spillBuilder(v, emit); continue; }
+      if (!v || (isPure(v) && !touched(v)) || t.isFunctionExpression(v) || t.isArrowFunctionExpression(v)) continue;
+      if (v.__builder) { this.spillBuilder(v, emit, assigned, props); continue; }
       const id = t.identifier(this.tmpName());
       emit(t.variableDeclaration('const', [t.variableDeclarator(id, v)]));
       holder[key] = id;
@@ -1970,10 +1980,22 @@ class Lifter {
    */
   hoistBaseSpills(base, results, stack, emit, baseNodes, cond) {
     const hoisted = new Map(); // value node -> temp name
+    // `(rN = v)` pending on the shared stack: a branch that reads rN flushes it as `rN = v;`. The VM
+    // ran that store before the test, so the statement belongs in front of the conditional, and
+    // the stack entry becomes `rN` on both paths
+    const baseAssigns = new Map(); // right-hand node -> assignment node
+    for (const v of base) if (v && typeof v === 'object') t.traverseFast(v, (n) => { if (t.isAssignmentExpression(n, { operator: '=' }) && t.isIdentifier(n.left)) baseAssigns.set(n.right, n); });
+    const flushedAsg = new Map(); // assignment node -> name
     for (const res of results) {
       const keep = [];
       const renames = new Map();
       for (const st of res.stmts) {
+        const asg = t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) ? st.expression : null;
+        const orig = asg && baseAssigns.get(asg.right);
+        if (orig && t.isIdentifier(orig.left, { name: asg.left.name })) {
+          if (!flushedAsg.has(orig)) { flushedAsg.set(orig, asg.left.name); emit(st); }
+          continue;
+        }
         const d = t.isVariableDeclaration(st, { kind: 'const' }) && st.declarations.length === 1 ? st.declarations[0] : null;
         if (d && t.isIdentifier(d.id) && /^_t\d+$/.test(d.id.name) && baseNodes.has(d.init) && keep.length === 0 || d && hoisted.has(d.init) && baseNodes.has(d.init)) {
           if (hoisted.has(d.init)) renames.set(d.id.name, hoisted.get(d.init));
@@ -1989,9 +2011,9 @@ class Lifter {
       }
       res.stmts = keep;
     }
-    if (hoisted.size) {
+    if (hoisted.size || flushedAsg.size) {
       // one shared node per temporary: stack entries are compared by identity (`a === b`) later
-      const ids = new Map([...hoisted].map(([node, name]) => [node, t.identifier(name)]));
+      const ids = new Map([...hoisted, ...flushedAsg].map(([node, name]) => [node, t.identifier(name)]));
       const byName = new Map([...ids.values()].map((id) => [id.name, id]));
       // identifiers the branches created for their own spills of the same value: canonicalize
       const sub = (x) => { for (const [node, id] of ids) x = replaceIdentity(x, node, id); return t.isIdentifier(x) && byName.has(x.name) ? byName.get(x.name) : x; };
@@ -2293,8 +2315,13 @@ class Lifter {
         if (m === 'STORE_LOCAL_CONST' && v.__builder && t.isClassExpression(v) && v.id && stack.includes(v) && !frame.declared.has(operand) && !frame.external &&
             this.slotName(state, frame, operand).name === v.id.name) {
           frame.declared.add(operand);
+          (frame.classAliases || (frame.classAliases = new Set())).add(operand);
           return;
         }
+        // the finished class stored again into its own name slot (after static initializers):
+        // that slot is the class's inner binding, which the class expression already provides
+        if (frame.classAliases && frame.classAliases.has(operand) && t.isClassExpression(v) && v.id &&
+            this.slotName(state, frame, operand).name === v.id.name) return;
         const target = this.slotName(state, frame, operand);
         // per-iteration copy of an aliased `for (let ...)` variable: `i = i`
         if (frame.declared.has(operand) && t.isIdentifier(v) && t.isIdentifier(target, { name: v.name })) return;

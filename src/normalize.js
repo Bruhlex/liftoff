@@ -31,8 +31,8 @@ const t = require('@babel/types');
  * `const o = {a: 1}; f(o)` but leaves the temporary in place. Handler shapes, role inference
  * (try frames, scope objects) and host call sites all expect the literal inline.
  *
- * Inlined only when semantics are certainly unchanged: `const` binding, exactly one
- * reference, located in the directly following statement of the same block and not inside a
+ * Inlined only when semantics are certainly unchanged: a binding that is never reassigned,
+ * exactly one reference, located in the directly following statement of the same block and not inside a
  * nested function (which would create a new object per call), and none of the literal's
  * identifiers is written by that statement.
  */
@@ -55,7 +55,11 @@ function inlineLiteralTemps(code) {
   let changed = 0;
   traverse(ast, {
     VariableDeclaration(path) {
-      if (path.node.kind !== 'const' || path.node.declarations.length !== 1) return;
+      // `var` too: builds with transformObjectKeys declare the temporaries with `var` (`let` stays:
+      // the VM's own handlers use `let o = {...}` and are recognized in that form)
+      if (path.node.kind === 'let' || path.node.declarations.length !== 1) return;
+      // a top-level `var` is a global property that VM code reads by name, invisible to the binding
+      if (path.node.kind === 'var' && path.scope.getFunctionParent() === null) return;
       const d = path.node.declarations[0];
       if (!t.isIdentifier(d.id) || !(t.isObjectExpression(d.init) || t.isArrayExpression(d.init))) return;
       if (!Array.isArray(path.container)) return;

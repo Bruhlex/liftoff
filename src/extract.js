@@ -259,7 +259,12 @@ function functionKind(fn) {
 /** Run the instrumented VM copy in a fresh sandbox; returns { X, built } */
 function createSandbox(vm) {
   const built = buildInstrumentedSource(vm);
-  const sandbox = { console: { log() {}, error() {}, warn() {}, info() {}, debug() {} } };
+  const sandbox = {
+    console: { log() {}, error() {}, warn() {}, info() {}, debug() {} },
+    // builds for Node read e.g. `process.env.NODE_DEBUG` into their constant pool; an inert
+    // stand-in (the real process object is never exposed to the build's code)
+    process: { env: {}, argv: [], platform: 'linux', version: 'v20.0.0', versions: {}, nextTick() {}, cwd: () => '/' },
+  };
   const ctx = nodeVm.createContext(sandbox);
   nodeVm.runInContext(built.src, ctx, { timeout: 10000, filename: 'vm-instrumented.js' });
   const X = ctx.__VMX;
