@@ -99,3 +99,5 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .compare { margin: 16px 0 0; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel); }
 .compare[hidden] { display: none; }
 .compare.ok { color: var(--ok); } .compare.err { color: var(--err); }
+
+.checks { display: inline-flex; gap: 14px; flex-wrap: wrap; }

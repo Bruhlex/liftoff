@@ -70,13 +70,14 @@ it. That is not a security sandbox: only decompile files you are willing to run.
 
 ```
 npm install --ignore-scripts
-node index.js <input.js> [-o output.js] [--no-webcrack] [--disasm] [--quiet]
+node index.js <input.js> [-o output.js] [--no-webcrack] [--raw-names] [--disasm] [--quiet]
 ```
 
 | flag | meaning |
 |---|---|
 | `-o file` | write the result to `file` instead of stdout |
 | `--no-webcrack` | skip the webcrack normalization pass |
+| `--raw-names` | keep the decompiler's raw names (`r12`, `a0`, `s4_2`) instead of naming variables by their use |
 | `--disasm` | print the recovered opcode listing of every program instead of decompiling |
 | `--quiet` | suppress progress messages |
 

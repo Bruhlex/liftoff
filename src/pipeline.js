@@ -11,7 +11,7 @@ const { inferUnknown, describeEntry } = require('./probe');
 const { assemble } = require('./emit');
 const { disassemble } = require('./disasm');
 
-async function decompile(raw, { name = 'input.js', skipWebcrack = false, disasm = false, log = () => {}, warn: onWarn = () => {} } = {}) {
+async function decompile(raw, { name = 'input.js', skipWebcrack = false, disasm = false, prettyNames = true, log = () => {}, warn: onWarn = () => {} } = {}) {
   const warnings = [];
   const warn = (m) => { warnings.push(m); onWarn(m); };
 
@@ -47,7 +47,7 @@ async function decompile(raw, { name = 'input.js', skipWebcrack = false, disasm 
   const ex = extractPrograms(vm, table, { log, sandbox });
   if (disasm) return { mode: 'vm', code: disassemble(ex, table), warnings, programs: ex.programs.length, opcodes: table.size, stats: null };
 
-  const { code: out } = assemble(vm, ex, table, { log, warn });
+  const { code: out } = assemble(vm, ex, table, { log, warn, prettyNames });
   const unresolved = (out.match(/unresolved jump to \d+/g) || []).length;
   if (unresolved) warn(`${unresolved} jump(s) could not be structured; the output marks them with /* unresolved jump to N */ and is not equivalent there`);
   const unidentified = unknown.filter((u) => !table.has(u.opcode)).length;

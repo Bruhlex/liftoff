@@ -101,7 +101,7 @@ function frameFromScopeLiteral(obj, vm, lifter, warn) {
 // assembly
 // ---------------------------------------------------------------------------
 
-function assemble(vm, ex, table, { log = () => {}, warn = () => {} } = {}) {
+function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames = true } = {}) {
   const programsById = new Map(ex.programs.map((p) => [p.id, p]));
   // every identifier of the file: synthetic names (`r2`, `a0`, `_t1`, ...) are chosen not to capture one
   const reserved = new Set();
@@ -367,7 +367,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {} } = {}) {
     code = next;
   }
   // readable names for synthetic identifiers (cosmetic, last)
-  if (!process.env.VMDEC_NONAMES && renameSynthetic(file)) code = generate(file, { comments: true, compact: false, jsescOption: { minimal: true } }).code;
+  if (prettyNames && !process.env.VMDEC_NONAMES && renameSynthetic(file)) code = generate(file, { comments: true, compact: false, jsescOption: { minimal: true } }).code;
   log(`${replaced} host call site(s) replaced, ${unreferenced.length} unreferenced program(s)`);
   return { code, replaced };
 }

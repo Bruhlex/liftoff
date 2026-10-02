@@ -243,7 +243,7 @@
       placeholder('No result.');
       finish();
     };
-    worker.postMessage({ source: input.value, name: fileName, skipWebcrack: $('skipWebcrack').checked });
+    worker.postMessage({ source: input.value, name: fileName, skipWebcrack: $('skipWebcrack').checked, prettyNames: $('prettyNames').checked });
   });
 
   cancel.addEventListener('click', () => {

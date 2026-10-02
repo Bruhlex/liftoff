@@ -32,7 +32,10 @@
       <textarea id="input" spellcheck="false" placeholder="Paste a virtualized build here, or drop a .js file onto this box."></textarea>
       <div class="pane-foot">
         <span id="inputInfo" class="muted">No input yet.</span>
-        <label class="check"><input type="checkbox" id="skipWebcrack"> skip webcrack normalization</label>
+        <span class="checks">
+          <label class="check" title="Name variables after how they are used (list, map, str, options, ...) instead of r12, a0, s4_2"><input type="checkbox" id="prettyNames" checked> readable variable names</label>
+          <label class="check"><input type="checkbox" id="skipWebcrack"> skip webcrack normalization</label>
+        </span>
       </div>
       <div class="console" id="runInputBox" hidden>
         <div class="console-head"><span>Console</span><span class="muted" id="runInputInfo"></span></div>

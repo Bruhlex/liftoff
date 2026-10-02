@@ -2,13 +2,14 @@
 const { decompile } = require('../src/pipeline');
 
 self.onmessage = async (e) => {
-  const { source, name, skipWebcrack } = e.data;
+  const { source, name, skipWebcrack, prettyNames } = e.data;
   const post = (m) => self.postMessage(m);
   try {
     const t0 = performance.now();
     const res = await decompile(source, {
       name: name || 'input.js',
       skipWebcrack: !!skipWebcrack,
+      prettyNames: prettyNames !== false,
       log: (m) => post({ type: 'log', text: m }),
       warn: (m) => post({ type: 'warn', text: m }),
     });
