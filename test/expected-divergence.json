@@ -1,0 +1,6 @@
+{
+  "test10.js": {
+    "mode": "prefix",
+    "reason": "The obfuscated build itself throws 'ReferenceError: __filename is not defined' before its last line: the obfuscator.io VM passes `require` into the VM but not the other CommonJS module variables. The decompiled program references __filename directly and prints the complete output of the source program, so the original's output is only a prefix of it."
+  }
+}

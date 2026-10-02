@@ -1,0 +1,732 @@
+{
+ "signatures": {
+  "let v0=OP;SC.sc_slots[v0]=FN;let v1=SC.sc_constFlags;if(!v1){v1=Object_create(null);SC.sc_constFlags=v1;}v1[v0]=2;PC++;": {
+   "mnemonic": "BIND_SELF"
+  },
+  "S[--SP];PC++;": {
+   "mnemonic": "DROP"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;S[SP++]=R[v0]*K[v1];PC++;": {
+   "mnemonic": "FUSED_BINOP",
+   "op": "*"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=K[OP];Object_defineProperty(v1,v2,{value:v0,writable:true,enumerable:true,configurable:true});if(\"function\"===typeof v0){if(!NS.p0){NS.p0=new WeakMap();}WeakMap_prototype_set.call(NS.p0,v0,v1);}PC++;": {
+   "mnemonic": "DEFINE_PROP_NAMED"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;if(R[v0]<K[v1]){PC=J[PC];}else{PC++;}": {
+   "mnemonic": "FUSED_JMPT",
+   "op": "<"
+  },
+  "let v0=K[OP];let v1=S[--SP];let v2=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v3=NS.p0;let v4=v3&&WeakMap_prototype_get.call(v3,v1);if(!v4&&v3&&(Function_prototype_call===v1||Function_prototype_apply===v1)){v4=WeakMap_prototype_get.call(v3,v2);}let v5=NS.p1;if(v4){NS.p2=true;NS.p1=v4;}let v6;try{if(0===v0){v6=Reflect_apply(v1,v2,EMPTYARRAY);}else if(1===v0){let v7=S[--SP];v6=v7&&\"object\"===typeof v7&&WeakSet_prototype_has.call(v8,v7)?Reflect_apply(v1,v2,v7.value):Reflect_apply(v1,v2,[v7]);}else{v6=Reflect_apply(v1,v2,H_popArgs(v9,v0));}S[SP++]=v6;}finally{if(v4){NS.p2=false;NS.p1=v5;}}PC++;": {
+   "mnemonic": "CALL_METHOD_IMM"
+  },
+  "let v0=OP;let v1=S[--SP];SC.sc_slots[v0]=v1;PC++;": {
+   "mnemonic": "STORE_LOCAL"
+  },
+  "S[SP++]={};PC++;": {
+   "mnemonic": "PUSH_OBJ"
+  },
+  "v0=SP<=0?undefined:S[--SP];return 1;": {
+   "mnemonic": "RETURN"
+  },
+  "let v0=K[OP];let v1=true;if(v0 in G){v1=delete G[v0];}if(v1&&v0 in NS){v1=delete NS[v0];}S[SP++]=v1;PC++;": {
+   "mnemonic": "DELETE_GLOBAL"
+  },
+  "PC++;": {
+   "mnemonic": "NOP"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];if(Array.isArray(v0)){Array.prototype.push.apply(v1,v0);}else{for(let v2 of v0){v1.push(v2);}}PC++;": {
+   "mnemonic": "ARR_SPREAD"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&v1[24];let v4=v1&&v1[v3[6]];let v5=v1&&v1[v3[7]];let v6=v1&&v1[v3[8]];let v7=v1&&v1[v3[9]];let v8=v1&&v1[v3[2]]||0;let v9=v1&&v1[v3[10]];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;let v2=R[v0];let v3=K[v1];S[SP++]=v2[v3];PC++;": {
+   "mnemonic": "GETPROP_REG_CONST"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];if(null!==v0&&undefined!==v0){Object.assign(v1,v0);}PC++;": {
+   "mnemonic": "OBJ_SPREAD"
+  },
+  "let v0=S[--SP];S[SP++]=BIGINT===typeof v0?v0-0x1n:+v0-1;PC++;": {
+   "mnemonic": "DEC_VALUE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1>>>v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": ">>>"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[--SP];Object_defineProperty(v2,v1,{value:v0,writable:true,enumerable:true,configurable:true});if(\"function\"===typeof v0){if(!NS.p0){NS.p0=new WeakMap();}WeakMap_prototype_set.call(NS.p0,v0,v2);}PC++;": {
+   "mnemonic": "DEFINE_PROP_COMPUTED"
+  },
+  "S[SP++]=R[OP];PC++;": {
+   "mnemonic": "LOAD_REG"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1 instanceof v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "instanceof"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v0<v1;PC++;": {
+   "mnemonic": "BINOP",
+   "op": ">"
+  },
+  "S[SP++]=K[OP];PC++;": {
+   "mnemonic": "PUSH_CONST"
+  },
+  "let v0=S[--SP];let v1=S[--SP];if(null===v1||undefined===v1){if(Symbol.iterator===v0){throw new TypeError((null===v1?\"object null\":\"undefined\")+\" is not iterable (cannot read property Symbol(Symbol.iterator))\");}throw new TypeError(\"Cannot read properties of \"+v1+\" (reading \"+(\"symbol\"===typeof v0?\"'\"+v0.toString()+\"'\":\"string\"===typeof v0?\"'\"+v0+\"'\":\"object\"===typeof v0||\"function\"===typeof v0?\"'<computed key>'\":\"'\"+String(v0)+\"'\")+\")\");}S[SP++]=v1[v0];PC++;": {
+   "mnemonic": "GETPROP_COMPUTED"
+  },
+  "R[OP]=S[--SP];PC++;": {
+   "mnemonic": "STORE_REG"
+  },
+  "if(S[--SP]){PC++;}else{PC=J[PC];}": {
+   "mnemonic": "JMPF"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v3=NS.p0;let v4=v3&&WeakMap_prototype_get.call(v3,v1);if(!v4&&v3&&(Function_prototype_call===v1||Function_prototype_apply===v1)){v4=WeakMap_prototype_get.call(v3,v2);}let v5=NS.p1;if(v4){NS.p2=true;NS.p1=v4;}let v6;try{if(0===v0){v6=Reflect_apply(v1,v2,EMPTYARRAY);}else if(1===v0){let v7=S[--SP];v6=v7&&\"object\"===typeof v7&&WeakSet_prototype_has.call(v8,v7)?Reflect_apply(v1,v2,v7.value):Reflect_apply(v1,v2,[v7]);}else{v6=Reflect_apply(v1,v2,H_popArgs(v9,v0));}S[SP++]=v6;}finally{if(v4){NS.p2=false;NS.p1=v5;}}PC++;": {
+   "mnemonic": "CALL_METHOD"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[SP-1];Object_defineProperty(v2,v1,{get:v0,enumerable:false,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_GETTER_COMPUTED",
+   "protoTarget": false
+  },
+  "S[SP-1]=typeof S[SP-1];PC++;": {
+   "mnemonic": "UNARY",
+   "op": "typeof"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];let v2=K[OP];Object_defineProperty(v1,v2,{value:v0,writable:true,enumerable:false,configurable:true});if(\"function\"===typeof v0){if(!NS.p0){NS.p0=new WeakMap();}WeakMap_prototype_set.call(NS.p0,v0,v1);}PC++;": {
+   "mnemonic": "DEFINE_METHOD_NAMED"
+  },
+  "S[SP++]=[];PC++;": {
+   "mnemonic": "PUSH_ARR"
+  },
+  "throw S[--SP];": {
+   "mnemonic": "THROW"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[--SP];if(null===v2||undefined===v2){throw new TypeError(\"Cannot set properties of \"+v2+\" (setting \"+(\"symbol\"===typeof v1?\"'\"+v1.toString()+\"'\":\"string\"===typeof v1?\"'\"+v1+\"'\":\"object\"===typeof v1||\"function\"===typeof v1?\"'<computed key>'\":\"'\"+String(v1)+\"'\")+\")\");}if(STRICT){let v3=\"object\"===typeof v2||\"function\"===typeof v2?v2:Object(v2);if(!Reflect.set(v3,v1,v0,v2)){throw new TypeError(\"Cannot assign to read only property '\"+String(v1)+\"' of object\");}}else{v2[v1]=v0;}S[SP++]=v0;PC++;": {
+   "mnemonic": "SETPROP_COMPUTED"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1/v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "/"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1**v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "**"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[SP-1];Object_defineProperty(v2.prototype,v1,{value:v0,writable:true,enumerable:false,configurable:true});if(\"function\"===typeof v0){if(!NS.p0){NS.p0=new WeakMap();}WeakMap_prototype_set.call(NS.p0,v0,v2.prototype);}PC++;": {
+   "mnemonic": "DEFINE_PROTO_METHOD_COMPUTED"
+  },
+  "let v0=S[--SP];if(null==v0){throw new TypeError(v0+\" is not iterable\");}let v1=v0[Symbol.asyncIterator];if(\"function\"===typeof v1){S[SP++]=v1.call(v0);}else{let v2=v0[Symbol.iterator];if(\"function\"!==typeof v2){throw new TypeError(v0+\" is not iterable\");}let v3=v2.call(v0);if(null===v3||\"object\"!==typeof v3){throw new TypeError(\"Iterator method returned a non-object value\");}let v4=async function(v5){if(null===v5||\"object\"!==typeof v5){throw new TypeError(\"Iterator result is not an object\");}let v6=await v5.value;return{value:v6,done:!!v5.done};};let v7={next:function(v5){let v6;try{v6=v3.next(v5);}catch(v8){return Promise.reject(v8);}return v4(v6);},return:function(v5){if(\"function\"!==typeof v3.return){return Promise.resolve({value:v5,done:true});}let v6;try{v6=v3.return(v5);}catch(v8){return Promise.reject(v8);}return v4(v6);},throw:function(v5){if(\"function\"!==typeof v3.throw){return Promise.reject(v5);}let v6;try{v6=v3.throw(v5);}catch(v8){return Promise.reject(v8);}return v4(v6);},[Symbol.asyncIterator]:function(){return this;}};S[SP++]=v7;}PC++;": {
+   "mnemonic": "GET_ASYNC_ITERATOR"
+  },
+  "let v0;let v1;if(OP<0){v0=S[--SP];v1=S[--SP];}else{v1=S[--SP];v0=K[OP];}let v2=delete v1[v0];if(STRICT&&!v2){throw new TypeError(\"Cannot delete property '\"+String(v0)+\"' of object\");}S[SP++]=v2;PC++;": {
+   "mnemonic": "DELETE_PROP"
+  },
+  "let v0=R[OP];let v1=v0&&v0.p0;if(undefined===v1){let v2=v0.i;let v3=Reflect_apply(v0.n,v2,[]);H_checkIterResult(v3);if(v3.done){PC=J[PC];}else{S[SP++]=v3.value;PC++;}}else{let v4=v0.p1;if(v4<v1.length){v0.p1=v4+1;S[SP++]=v1[v4];PC++;}else{PC=J[PC];}}": {
+   "mnemonic": "FOR_OF_NEXT"
+  },
+  "S[SP-1]=-S[SP-1];PC++;": {
+   "mnemonic": "UNARY",
+   "op": "-"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1%v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "%"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];v1.push(v0);PC++;": {
+   "mnemonic": "ARR_PUSH"
+  },
+  "let v0=S[--SP];let v1=typeof v0;if(null!==v0&&(\"object\"===v1||\"function\"===v1)){let v2={[v0]:0};v0=Reflect.ownKeys(v2)[0];}else if(\"symbol\"!==v1){v0=String(v0);}S[SP++]=v0;PC++;": {
+   "mnemonic": "TO_PROPERTY_KEY"
+  },
+  "if(DERIVED&&!v0){let v1=v2(SC);if(undefined===v1){throw new ReferenceError(\"Must call super constructor in derived class before accessing 'this' or returning from derived constructor\");}else{THIS=v1;v0=true;}}let v3=THIS;let v4=K[OP];if(null===v3||undefined===v3){throw new TypeError(\"Cannot read properties of \"+v3+\" (reading '\"+String(v4)+\"')\");}S[SP++]=v3[v4];PC++;": {
+   "mnemonic": "GET_THIS_PROP"
+  },
+  "S[--SP];S[SP++]=undefined;PC++;": {
+   "mnemonic": "VOID"
+  },
+  "let v0=K[OP];S[SP++]=Symbol.for(v0);PC++;": {
+   "mnemonic": "SYMBOL_FOR"
+  },
+  "let v0=S[--SP];if(null==v0){throw new TypeError(v0+\" is not iterable\");}let v1=v0[Symbol_iterator];if(Array.isArray(v0)&&v1===v2){S[SP++]={p0:v0,p1:0};PC++;}else{if(\"function\"!==typeof v1){throw new TypeError(v0+\" is not iterable\");}let v3=Reflect_apply(v1,v0,[]);H_checkIterResult(v3);let v4=v3.next;S[SP++]={i:v3,n:v4};PC++;}": {
+   "mnemonic": "GET_ITERATOR"
+  },
+  "let v0=K[OP];if(v0 in NS){S[SP++]=typeof NS[v0];}else{S[SP++]=typeof G[v0];}PC++;": {
+   "mnemonic": "TYPEOF_GLOBAL"
+  },
+  "let v0=S[--SP];if(null!==v0&&undefined!==v0){PC=J[PC];}else{PC++;}": {
+   "mnemonic": "JMP_NOT_NULLISH"
+  },
+  "S[SP++]=ARGS[OP];PC++;": {
+   "mnemonic": "LOAD_ARG"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1<<v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "<<"
+  },
+  "let v0=SC.sc_slots;v0[OP]=v0;SC.sc_selfIdx=OP;PC++;": {
+   "mnemonic": "BIND_THIS_SLOT"
+  },
+  "PC=J[PC];": {
+   "mnemonic": "JMP"
+  },
+  "let v0=S[--SP];S[SP++]=BIGINT===typeof v0?v0+0x1n:+v0+1;PC++;": {
+   "mnemonic": "INC_VALUE"
+  },
+  "L0:{let v0=OP&65535;let v1=OP>>>16;let v2=SC;for(let v3=0;v3<v1;v3++){v2=v2.sc_parent;}let v4=v2.sc_slots;let v5=v4[v0];if(v4===v5){let v6=v2.sc_names;throw new ReferenceError(\"Cannot access '\"+(v6&&v6[v0]||\"variable\")+\"' before initialization\");}S[SP++]=v5;PC++;break L0;}": {
+   "mnemonic": "LOAD_SCOPE"
+  },
+  "let v0=NS.p0;if(undefined===v0&&FN&&v1.has(FN)){v0=v1.get(FN);}if(undefined===v0){throw new ReferenceError(\"'super' keyword is only valid inside a derived constructor\");}S[SP++]=v0;PC++;": {
+   "mnemonic": "PUSH_SUPER_CTOR"
+  },
+  "let v0=K[OP];let v1;if(NS.p0&&v0 in NS.p0){throw new ReferenceError(\"Cannot access '\"+v0+\"' before initialization\");}if(v0 in NS){v1=NS[v0];}else if(v0 in G){v1=G[v0];}else{throw new ReferenceError(v0+\" is not defined\");}S[SP++]=v1;PC++;": {
+   "mnemonic": "LOAD_GLOBAL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[SP-1];let v3=H_protoTarget(v2);Object_defineProperty(v3,v1,{set:v0,enumerable:v2===v3,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_SETTER_COMPUTED",
+   "protoTarget": true
+  },
+  "L0:{let v0=S[--SP];let v1=H_popArgs(v2,v0);let v3=S[--SP];if(1===OP){S[SP++]=v1;PC++;break L0;}if(NS.p0){PC++;break L0;}let v4=NS.p1;if(v4){let v5=v4.outer;let v6=v5?Object_getPrototypeOf(v5):v4.parent;if(\"function\"!==typeof v6){throw new TypeError(\"Super constructor \"+String(v6)+\" of \"+(v5&&v5.name||\"anonymous\")+\" is not a constructor\");}let v7=v4.newTarget;let v8=Reflect.construct(v6,v1,v7);if(THIS&&THIS!==v8){Object_getOwnPropertyNames(THIS).forEach(function(v9){if(!(v9 in v8)){v8[v9]=THIS[v9];}});}THIS=v8;v10=true;v11(SC,THIS);PC++;break L0;}if(\"function\"!==typeof v3){throw new TypeError(\"Super expression must be a constructor\");}let v12;if(v13.has(FN)){v12=v14(SC);}else{v12=v10?THIS:undefined;}NS.p2=NT;let v15;try{let v9=v3.apply(THIS,v1);if(undefined!==v9&&THIS!==v9&&H_isObject(v9)){if(THIS){Object.assign(v9,THIS);}THIS=v9;if(NT&&NT.prototype&&NT.prototype!==Object_getPrototypeOf(THIS)){Object_setPrototypeOf(THIS,NT.prototype);}}v10=true;v11(SC,THIS);}catch(v16){let v17=v16&&\"string\"===typeof v16.message?v16.message:\"\";if(v17.includes(\"'new'\")||v17.includes(\"Illegal constructor\")){let v18=Reflect.construct(v3,v1,NT);if(THIS!==v18&&THIS){Object.assign(v18,THIS);}THIS=v18;v10=true;v11(SC,THIS);}else{v15=v16;}}finally{delete NS.p2;}if(undefined!==v15){throw v15;}if(undefined!==v12){throw new ReferenceError(\"Super constructor may only be called once\");}PC++;}": {
+   "mnemonic": "SUPER_CALL"
+  },
+  "let v0=v1[OP];let v2=S[--SP];if(v0){for(let v3=0;v3<v2;v3++){S[--SP];}for(let v4=0;v4<v2;v4++){S[--SP];}S[SP++]=v0;}else{let v5=new Array(v2);for(let v6=v2-1;0<=v6;v6--){v5[v6]=S[--SP];}let v7=new Array(v2);for(let v8=v2-1;0<=v8;v8--){v7[v8]=S[--SP];}Object_defineProperty(v7,\"raw\",{value:Object.freeze(v5)});Object.freeze(v7);v1[OP]=v7;S[SP++]=v7;}PC++;": {
+   "mnemonic": "TEMPLATE_OBJECT"
+  },
+  "if(\"symbol\"===typeof S[SP-1]){throw new TypeError(\"Cannot convert a Symbol value to a string\");}S[SP-1]=String(S[SP-1]);PC++;": {
+   "mnemonic": "TO_STRING"
+  },
+  "let v0=S[--SP];let v1;if(Array.isArray(v0)){v1=v0;}else{if(null===v0||undefined===v0){throw new TypeError(v0+\" is not iterable\");}let v2=v0[Symbol.iterator];if(null===v2||undefined===v2||\"function\"!==typeof v2){throw new TypeError(v0+\" is not iterable\");}let v3=Reflect_apply(v2,v0,[]);if(null===v3||\"object\"!==typeof v3){throw new TypeError(\"Iterator method returned a non-object value\");}v1=[];while(true){let v4=v3.next();H_checkIterResult(v4);if(v4.done){break;}v1.push(v4.value);}}let v5={value:v1};WeakSet_prototype_add.call(v6,v5);S[SP++]=v5;PC++;": {
+   "mnemonic": "SPREAD_MARK"
+  },
+  "SC=SC.sc_parent;PC++;": {
+   "mnemonic": "EXIT_SCOPE"
+  },
+  "S[SP++]=SC;PC++;": {
+   "mnemonic": "PUSH_SCOPE"
+  },
+  "let v0=S[--SP];S[SP++]=!!v0.done;PC++;": {
+   "mnemonic": "ITER_RESULT_DONE"
+  },
+  "if(null===v0){if(STRICT||!FLAG){let v1=v2||ARGS;let v3=v1?v1.length:0;v0=Object_create(Object.prototype);for(let v4=0;v4<v3;v4++){v0[v4]=v1[v4];}Object_defineProperty(v0,\"length\",{value:v3,writable:true,enumerable:false,configurable:true});Object_defineProperty(v0,Symbol.iterator,{value:Array.prototype[Symbol.iterator],writable:true,enumerable:false,configurable:true});v0=new Proxy(v0,{has:function(v5,v6){if(Symbol.toStringTag===v6){return false;}return v6 in v5;},get:function(v5,v6,v7){if(Symbol.toStringTag===v6){return\"Arguments\";}return Reflect.get(v5,v6,v7);}});if(STRICT){Object_defineProperty(v0,\"callee\",{get:v8,set:v8,enumerable:false,configurable:false});}else{Object_defineProperty(v0,\"callee\",{value:FN,writable:true,enumerable:false,configurable:true});}}else{let v5=ARGS?ARGS.length:0;let v6={};let v7={};let v9=FN;let v10=false;let v11=true;let v12={};let v13=function(v14){if(\"string\"!==typeof v14){return NaN;}let v15=+v14;if(0<=v15&&0===v15%1&&String(v15)===v14){return v15;}else{return NaN;}};let v16=function(v14){return!isNaN(v14)&&0<=v14;};let v17=function(v14){if(v14 in v7){return undefined;}if(v14 in v6){return v6[v14];}if(v14<ARGS.length){return ARGS[v14];}else{return undefined;}};let v18=function(v14){if(v14 in v7){return false;}if(v14 in v6){return true;}if(v14<ARGS.length){return v14 in ARGS;}else{return false;}};let v19={};Object_defineProperty(v19,\"length\",{value:v5,writable:true,enumerable:false,configurable:true});Object_defineProperty(v19,\"callee\",{value:FN,writable:true,enumerable:false,configurable:true});Object_defineProperty(v19,Symbol.iterator,{value:Array.prototype[Symbol.iterator],writable:true,enumerable:false,configurable:true});v0=new Proxy(v19,{get:function(v14,v15,v20){if(\"length\"===v15){return v5;}if(\"callee\"===v15){if(v10){return undefined;}else{return v9;}}if(Symbol.toStringTag===v15){return\"Arguments\";}let v21=v13(v15);if(v16(v21)){if(v21 in v12){return Reflect.get(v14,v15,v20);}return v17(v21);}return Reflect.get(v14,v15,v20);},set:function(v14,v15,v20){if(\"length\"===v15){if(!v11){return false;}v5=v20;v14.length=v20;return true;}if(\"callee\"===v15){v9=v20;v10=false;v14.callee=v20;return true;}let v21=v13(v15);if(v16(v21)){if(v21 in v12){return Reflect.set(v14,v15,v20);}let v22=Object_getOwnPropertyDescriptor(v14,String(v21));if(v22&&!v22.writable){return false;}if(v21 in v7){delete v7[v21];v6[v21]=v20;}else if(v21<ARGS.length){ARGS[v21]=v20;}else{v6[v21]=v20;}return true;}v14[v15]=v20;return true;},has:function(v14,v15){if(\"length\"===v15){return true;}if(\"callee\"===v15){return!v10;}if(Symbol.toStringTag===v15){return false;}let v20=v13(v15);if(v16(v20)){if(String(v20)in v14){return true;}return v18(v20);}return v15 in v14;},defineProperty:function(v14,v15,v20){if(\"length\"===v15){if(\"value\"in v20){v5=v20.value;}if(\"writable\"in v20){v11=v20.writable;}Object_defineProperty(v14,v15,v20);return true;}if(\"callee\"===v15){if(\"value\"in v20){v9=v20.value;}v10=false;Object_defineProperty(v14,v15,v20);return true;}let v21=v13(v15);if(v16(v21)){let v22=\"get\"in v20||\"set\"in v20;let v23=Object_getOwnPropertyDescriptor(v14,String(v21));let v24=v21 in v12?v23?v23.value:undefined:v17(v21);let v25=v23?false!==v23.writable:true;let v26=v23?false!==v23.enumerable:true;let v27=v23?false!==v23.configurable:true;let v28;if(v22){v28=v20;v12[v21]=1;if(v21 in v6){delete v6[v21];}if(v21 in v7){delete v7[v21];}}else{let v29=\"value\"in v20?v20.value:v24;let v30=\"writable\"in v20?v20.writable:v25;let v31=\"enumerable\"in v20?v20.enumerable:v26;let v32=\"configurable\"in v20?v20.configurable:v27;v28={value:v29,writable:v30,enumerable:v31,configurable:v32};if(\"value\"in v20){if(!(v21 in v12)){if(v21<ARGS.length&&!(v21 in v7)){ARGS[v21]=v20.value;}else{v6[v21]=v20.value;if(v21 in v7){delete v7[v21];}}}}if(\"writable\"in v20&&false===v20.writable){v12[v21]=1;if(v21 in v6){delete v6[v21];}if(v21 in v7){delete v7[v21];}}}Object_defineProperty(v14,String(v21),v28);return true;}Object_defineProperty(v14,v15,v20);return true;},deleteProperty:function(v14,v15){if(\"callee\"===v15){v10=true;delete v14.callee;return true;}let v20=v13(v15);if(v16(v20)){let v22=Object_getOwnPropertyDescriptor(v14,String(v20));if(v22&&false===v22.configurable){return false;}if(v20 in v12){delete v12[v20];}if(v20<ARGS.length){v7[v20]=1;}else{delete v6[v20];}delete v14[v15];return true;}let v21=Object_getOwnPropertyDescriptor(v14,v15);if(v21&&false===v21.configurable){return false;}delete v14[v15];return true;},preventExtensions:function(v14){let v15=ARGS?ARGS.length:0;for(let v20=0;v20<v15;v20++){if(!(v20 in v7)&&!Object_getOwnPropertyDescriptor(v14,String(v20))){Object_defineProperty(v14,String(v20),{value:v17(v20),writable:true,enumerable:true,configurable:true});}}for(let v21 in v6){if(!Object_getOwnPropertyDescriptor(v14,v21)){Object_defineProperty(v14,v21,{value:v6[v21],writable:true,enumerable:true,configurable:true});}}Object.preventExtensions(v14);return true;},getOwnPropertyDescriptor:function(v14,v15){if(\"callee\"===v15){if(v10){return undefined;}return Object_getOwnPropertyDescriptor(v14,\"callee\");}if(\"length\"===v15){return Object_getOwnPropertyDescriptor(v14,\"length\");}let v20=v13(v15);if(v16(v20)){if(v20 in v12){return Object_getOwnPropertyDescriptor(v14,v15);}if(v18(v20)){let v22=Object_getOwnPropertyDescriptor(v14,String(v20));return{value:v17(v20),writable:v22?v22.writable:true,enumerable:v22?v22.enumerable:true,configurable:v22?v22.configurable:true};}return Object_getOwnPropertyDescriptor(v14,v15);}let v21=Object_getOwnPropertyDescriptor(v14,v15);if(v21){return v21;}return undefined;},ownKeys:function(v14){let v15=[];let v20=ARGS?ARGS.length:0;for(let v22=0;v22<v20;v22++){if(!(v22 in v7)){v15.push(String(v22));}}for(let v23 in v6){if(-1===v15.indexOf(v23)){v15.push(v23);}}v15.push(\"length\");if(!v10){v15.push(\"callee\");}let v21=Reflect.ownKeys(v14);for(let v24=0;v24<v21.length;v24++){if(-1===v15.indexOf(v21[v24])){v15.push(v21[v24]);}}return v15;}});}}S[SP++]=v0;PC++;": {
+   "mnemonic": "PUSH_ARGUMENTS"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;S[SP++]=R[v0]+K[v1];PC++;": {
+   "mnemonic": "FUSED_BINOP",
+   "op": "+"
+  },
+  "let v0=S[--SP];let v1=K[OP];if(NS.p0&&v1 in NS.p0){throw new ReferenceError(\"Cannot access '\"+v1+\"' before initialization\");}let v2=!(v1 in NS)&&!(v1 in G);NS[v1]=v0;if(v1 in G){G[v1]=v0;}if(v2){G[v1]=v0;}S[SP++]=v0;PC++;": {
+   "mnemonic": "STORE_GLOBAL_DECL"
+  },
+  "let v0=S[--SP];let v1=K[OP];if(null===v0||undefined===v0){S[SP++]=undefined;}else{S[SP++]=v0[v1];}PC++;": {
+   "mnemonic": "OPT_GETPROP_NAMED"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1^v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "^"
+  },
+  "S[SP++]=null;PC++;": {
+   "mnemonic": "PUSH_NULL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1-v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "-"
+  },
+  "let v0=S[SP-1];S[SP-1]=S[SP-2];S[SP-2]=v0;PC++;": {
+   "mnemonic": "SWAP"
+  },
+  "S[SP++]=v0[OP];PC++;": {
+   "mnemonic": "DECOY_PUSH"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$XLvspe\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];let v2=K[OP];let v3=H_protoTarget(v1);Object_defineProperty(v3,v2,{get:v0,enumerable:v1===v3,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_GETTER_NAMED",
+   "protoTarget": true
+  },
+  "let v0=S[--SP];let v1=S[SP-1];let v2=K[OP];Object_defineProperty(v1,v2,{set:v0,enumerable:false,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_SETTER_NAMED",
+   "protoTarget": false
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v0!=v1;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "!="
+  },
+  "let v0=S[--SP];let v1=S[SP-1];let v2=K[OP];Object_defineProperty(v1,v2,{get:v0,enumerable:false,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_GETTER_NAMED",
+   "protoTarget": false
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[--SP];let v3=NS.p0;let v4=v3?Object_getPrototypeOf(v3):H_superProto(v2);if(null===v4||undefined===v4){throw new TypeError(\"Cannot convert \"+v4+\" to object\");}let v5=v6(v4,v1);let v7=false;if(v5.desc){let v8=v5.desc;if(v8.set){let v9=NS.p0;NS.p0=v5.proto||v4;NS.p1=true;try{v8.set.call(v2,v0);}finally{NS.p1=false;NS.p0=v9;}}else if(v8.get||!(\"value\"in v8)){if(STRICT){throw new TypeError(\"Cannot set property '\"+String(v1)+\"' of object which has only a getter\");}}else if(false===v8.writable){if(STRICT){throw new TypeError(\"Cannot assign to read only property '\"+String(v1)+\"' of object\");}}else{v7=true;}}else{v7=true;}if(v7){let v10=Object.getOwnPropertyDescriptor(v2,v1);if(v10){if(\"value\"in v10){if(v10.writable){v2[v1]=v0;}else if(STRICT){throw new TypeError(\"Cannot assign to read only property '\"+String(v1)+\"' of object\");}}else if(STRICT){throw new TypeError(\"Cannot redefine property: \"+String(v1));}}else{let v11=Reflect.defineProperty(v2,v1,{value:v0,writable:true,enumerable:true,configurable:true});if(!v11&&STRICT){throw new TypeError(\"Cannot assign to read only property '\"+String(v1)+\"' of object\");}}}S[SP++]=v0;PC++;": {
+   "mnemonic": "SUPER_SET"
+  },
+  "let v0=S[--SP];let v1=H_popArgs(v2,v0);let v3=S[--SP];if(\"function\"!==typeof v3){throw new TypeError(v3+\" is not a constructor\");}if(WeakSet_prototype_has.call(v4,v3)){throw new TypeError(v3.name+\" is not a constructor\");}let v5=NS.p0;NS.p0=undefined;let v6;try{v6=Reflect.construct(v3,v1);}finally{NS.p0=v5;}S[SP++]=v6;PC++;": {
+   "mnemonic": "NEW"
+  },
+  "if(TF&&0<TF.length){let v0=TF[TF.length-1];if(PC===v0.tf_finallyPc){if(undefined!==v0.p0){v1=v0.p0;}if(undefined!==v0.tf_scope){SC=v0.tf_scope;}TF.pop();}}PC++;": {
+   "mnemonic": "FINALLY_ENTER"
+  },
+  "let v0=S[--SP];let v1=K[OP];if(null===v0||undefined===v0){throw new TypeError(\"Cannot read properties of \"+v0+\" (reading '\"+String(v1)+\"')\");}S[SP++]=v0[v1];PC++;": {
+   "mnemonic": "GETPROP_NAMED"
+  },
+  "let v0=S[SP-1];let v1=K[OP];if(null===v0||undefined===v0){throw new TypeError(\"Cannot read properties of \"+v0+\" (reading '\"+String(v1)+\"')\");}S[SP++]=v0[v1];PC++;": {
+   "mnemonic": "GETPROP_NAMED_KEEP"
+  },
+  "let v0=S[--SP];let v1=v0&&v0.i?v0.i:v0;if(null!=v1){if(null===v2){let v3=v1.return;if(null!=v3){if(\"function\"!==typeof v3){throw new TypeError(\"iterator 'return' is not callable\");}let v4=v3.call(v1);H_checkIterResult(v4);}}else{try{let v5=v1.return;if(\"function\"===typeof v5){v5.call(v1);}}catch(v6){}}}PC++;": {
+   "mnemonic": "ITER_CLOSE"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];let v2=NS.p0;let v3=v2?Object_getPrototypeOf(v2):H_superProto(v1);let v4=v5(v3,v0);if(v4.desc&&v4.desc.get){let v6=NS.p0;NS.p0=v4.proto||v3;NS.p1=true;let v7;try{v7=v4.desc.get.call(v1);}finally{NS.p1=false;NS.p0=v6;}S[SP++]=v7;PC++;break L0;}if(v4.desc&&v4.desc.set&&!(\"value\"in v4.desc)){S[SP++]=undefined;PC++;break L0;}let v8=v4.proto?v4.proto[v0]:v3[v0];if(\"function\"===typeof v8){let v9=v4.proto||v3;let v10=v8.constructor&&v8.constructor.name;let v11=\"GeneratorFunction\"===v10||\"AsyncFunction\"===v10||\"AsyncGeneratorFunction\"===v10;if(!v11){if(!NS.p2){NS.p2=new WeakMap();}WeakMap_prototype_set.call(NS.p2,v8,v9);}}S[SP++]=v8;PC++;}": {
+   "mnemonic": "SUPER_GET"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;S[SP++]=R[v0]<K[v1];PC++;": {
+   "mnemonic": "FUSED_BINOP",
+   "op": "<"
+  },
+  "S[SP++]=undefined;PC++;": {
+   "mnemonic": "PUSH_UNDEF"
+  },
+  "let v0=R[OP]+1;R[OP]=v0;S[SP++]=v0;PC++;": {
+   "mnemonic": "REG_PREINC"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v0!==v1;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "!=="
+  },
+  "TF.pop();PC++;": {
+   "mnemonic": "TRY_POP"
+  },
+  "let v0=S[--SP];let v1=v0&&v0.i?v0.i:v0;try{if(null!=v1){let v2=v1.return;if(\"function\"===typeof v2){v2.call(v1);}}}catch(v3){}PC++;": {
+   "mnemonic": "ITER_CLOSE_SILENT"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[SP-1];let v3=H_protoTarget(v2);Object_defineProperty(v3,v1,{get:v0,enumerable:v2===v3,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_GETTER_COMPUTED",
+   "protoTarget": true
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[SP-1];Object_defineProperty(v2,v1,{value:v0,writable:true,enumerable:false,configurable:true});if(\"function\"===typeof v0){if(!NS.p0){NS.p0=new WeakMap();}WeakMap_prototype_set.call(NS.p0,v0,v2);}PC++;": {
+   "mnemonic": "DEFINE_METHOD_COMPUTED"
+  },
+  "if(S[SP-1]){PC=J[PC];}else{S[--SP];PC++;}": {
+   "mnemonic": "JMPT_KEEP"
+  },
+  "v0=v1(v2,OP);PC++;": {
+   "mnemonic": "NOP"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){try{let v5=Object_create(v0.prototype);let v6=v0.apply(v5,[]);if(undefined!==v6&&v5!==v6){v2=true;}}catch(v7){let v8=v7&&\"string\"===typeof v7.message?v7.message:\"\";if(v8.includes(\"'new'\")||v8.includes(\"constructor\")||v8.includes(\"Illegal constructor\")){v2=true;}}}if(v2){let v9=v1;let v10=NS;let v11=\"_$XLvspe\";let v12=\"_$iUQidF\";let v13=\"_$74DNGY\";function v14(...v15){let v16=Object_create(v0.prototype);v10[v13]={parent:v0,newTarget:v17.v18||v14,outer:v14};v10[v12]=v17.v18||v14;let v19=v11 in v10;if(!v19){v10[v11]=v17.v18;}try{let v20=v9.apply(v16,v15);if(undefined!==v20&&null!==v20&&H_isObject(v20)){v16=v20;}}finally{delete v10[v13];delete v10[v12];if(!v19){delete v10[v11];}}return v16;}v14.prototype=Object_create(v0.prototype);v14.prototype.constructor=v14;Object_setPrototypeOf(v14,v0);Object_getOwnPropertyNames(v9).forEach(function(v15){if(\"prototype\"!==v15&&\"length\"!==v15&&\"name\"!==v15){H_safeDefine(v14,v15,Object_getOwnPropertyDescriptor(v9,v15));}});if(v9.prototype){Object_getOwnPropertyNames(v9.prototype).forEach(function(v15){if(\"constructor\"!==v15){H_safeDefine(v14.prototype,v15,Object_getOwnPropertyDescriptor(v9.prototype,v15));}});Object_getOwnPropertySymbols(v9.prototype).forEach(function(v15){H_safeDefine(v14.prototype,v15,Object_getOwnPropertyDescriptor(v9.prototype,v15));});}S[--SP];S[SP++]=v14;v14.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "L0:{let v0=OP&65535;let v1=OP>>>16;let v2=S[--SP];let v3=SC;for(let v4=0;v4<v1;v4++){v3=v3.sc_parent;}let v5=v3.sc_slots;if(v5===v5[v0]){let v6=v3.sc_names;throw new ReferenceError(\"Cannot access '\"+(v6&&v6[v0]||\"variable\")+\"' before initialization\");}let v7=v3.sc_constFlags;let v8=v7&&v7[v0];if(v8){if(2===v8&&!STRICT){PC++;break L0;}throw new TypeError(\"Assignment to constant variable.\");}v5[v0]=v2;PC++;break L0;}": {
+   "mnemonic": "STORE_SCOPE"
+  },
+  "if(-1===OP){S[SP++]=Symbol();}else{let v0=S[--SP];S[SP++]=Symbol(v0);}PC++;": {
+   "mnemonic": "SYMBOL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];if(null===v1||undefined===v1){S[SP++]=undefined;}else{S[SP++]=v1[v0];}PC++;": {
+   "mnemonic": "OPT_GETPROP_COMPUTED"
+  },
+  "let v0=OP&65535;let v1=SC.sc_slots;v1[v0]=v1;let v2=OP>>>16;if(v2){(SC.sc_names||={})[v0]=K[v2-1];}PC++;": {
+   "mnemonic": "DECLARE_TDZ"
+  },
+  "let v0=OP&65535;let v1=OP>>16;let v2=K[v0];let v3=K[v1];S[SP++]=new RegExp(v2,v3);PC++;": {
+   "mnemonic": "NEW_REGEXP"
+  },
+  "L0:{if(TF&&0<TF.length){let v0=TF[TF.length-1];if(undefined!==v0.tf_finallyPc){v1=false;v2=0;v3=undefined;v4=false;v5=0;v6=undefined;v7=true;v8=S[--SP];v9=v0.tf_pc;v10=v0.tf_endPc;PC=v0.tf_finallyPc;break L0;}}if(v7||v1||v4){v7=false;v8=undefined;v1=false;v2=0;v3=undefined;v4=false;v5=0;v6=undefined;}let v11=S[--SP];if(DERIVED&&undefined===v11&&!v12){throw new ReferenceError(\"Must call super constructor in derived class before accessing 'this' or returning from derived constructor\");}v13=v11;return 1;}": {
+   "mnemonic": "RETURN"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1*v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "*"
+  },
+  "S[SP++]=NT;PC++;": {
+   "mnemonic": "PUSH_NEW_TARGET"
+  },
+  "let v0=R[OP]-1;R[OP]=v0;S[SP++]=v0;PC++;": {
+   "mnemonic": "REG_PREDEC"
+  },
+  "let v0=S[--SP];let v1=K[OP];if(STRICT&&!(v1 in G)&&!(v1 in NS)){throw new ReferenceError(v1+\" is not defined\");}NS[v1]=v0;G[v1]=v0;S[SP++]=v0;PC++;": {
+   "mnemonic": "STORE_GLOBAL"
+  },
+  "let v0=S[--SP];let v1=v0&&v0.p0;if(undefined===v1){let v2=v0&&v0.i?v0.i:v0;let v3=v0&&v0.n?v0.n:v2&&v2.next;if(\"function\"!==typeof v3){throw new TypeError(\"iterator.next is not a function\");}let v4=Reflect_apply(v3,v2,[]);H_checkIterResult(v4);S[SP++]=v4;PC++;}else{let v5=v0.p1;let v6;if(v5<v1.length){v0.p1=v5+1;v6={value:v1[v5],done:false};}else{v6={value:undefined,done:true};}S[SP++]=v6;PC++;}": {
+   "mnemonic": "ITER_NEXT_RESULT"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=v5[24];let v12=v5[v11[22]];if(v12&&PROG===v5&&!v5[v11[5]]&&PSC===v3.e){if(!v13){v13=[];}v13[v14++]=PC;v13[v14++]=SP;v13[v14++]=ARGS;v13[v14++]=v15;v13[v14++]=v16;v13[v14++]=SC;for(let v17=0;v17<v18;v17++){v13[v14++]=R[v17];}ARGS=v7;v15=null;if(v5[v11[11]]){v16=null;let v19=v5[v11[2]]||0;for(let v20=0;v20<v19&&v20<v7.length;v20++){R[v20]=v7[v20];}for(let v21=v7.length<v19?v7.length:v19;v21<v18;v21++){R[v21]=undefined;}PC=v12;}else{v16=H_sliceArgs(v7);for(let v22=0;v22<v18;v22++){R[v22]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v23(v5,v7,v3.e,v1,undefined,undefined);PC++;break L0;}}let v24=NS.p1;let v25=NS.p0;let v26=v25&&WeakMap_prototype_get.call(v25,v1);if(v26){NS.p3=true;NS.p1=v26;}else{NS.p1=undefined;}let v27;try{if(0===v0){v27=v1();}else if(1===v0){let v28=S[--SP];v27=v28&&\"object\"===typeof v28&&WeakSet_prototype_has.call(v9,v28)?Reflect_apply(v1,undefined,v28.value):v1(v28);}else{v27=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v27;}finally{if(v26){NS.p3=false;}NS.p1=v24;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=TT[PC];if(!TF){TF=[];}TF.push({tf_catchPc:v0[0]<0?undefined:v0[0],tf_finallyPc:v0[1]<0?undefined:v0[1],tf_endPc:v0[2]<0?undefined:v0[2],tf_sp:SP,tf_pc:PC,tf_scope:SC});PC++;": {
+   "mnemonic": "TRY_ENTER"
+  },
+  "S[SP++]=LT;PC++;": {
+   "mnemonic": "PUSH_LEXICAL_THIS"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;let v2=S[--SP];let v3=H_popArgs(v4,v2);let v5=R[v0];let v6=K[v1];let v7=v5[v6];S[SP++]=v7.apply(v5,v3);PC++;": {
+   "mnemonic": "CALL_METHOD_REG_CONST"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=S[SP-1];Object_defineProperty(v2,v1,{set:v0,enumerable:false,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_SETTER_COMPUTED",
+   "protoTarget": false
+  },
+  "if(S[--SP]){PC=J[PC];}else{PC++;}": {
+   "mnemonic": "JMPT"
+  },
+  "R[OP]=R[OP]-1;PC++;": {
+   "mnemonic": "REG_DEC"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;S[SP++]=R[v0]-K[v1];PC++;": {
+   "mnemonic": "FUSED_BINOP",
+   "op": "-"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];let v2=K[OP];let v3=H_protoTarget(v1);Object_defineProperty(v3,v2,{set:v0,enumerable:v1===v3,configurable:true});PC++;": {
+   "mnemonic": "DEFINE_SETTER_NAMED",
+   "protoTarget": true
+  },
+  "v0=OP;PC++;": {
+   "mnemonic": "NOP"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v0===v1;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "==="
+  },
+  "debugger;PC++;": {
+   "mnemonic": "DEBUGGER"
+  },
+  "R[OP]=R[OP]+1;PC++;": {
+   "mnemonic": "REG_INC"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1<=v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "<="
+  },
+  "S[SP-1]=!S[SP-1];PC++;": {
+   "mnemonic": "UNARY",
+   "op": "!"
+  },
+  "if(-2===OP){}else if(-1===OP){S[--SP];}else{SC.sc_slots[OP]=S[--SP];}PC++;": {
+   "mnemonic": "STORE_LOCAL"
+  },
+  "L0:{let v0=J[PC];if(TF&&0<TF.length){let v1=TF[TF.length-1];if(undefined!==v1.tf_finallyPc&&(v1.tf_endPc<=v0||v0<=v1.tf_pc)){v2=false;v3=undefined;v4=false;v5=0;v6=undefined;v7=true;v8=v0;v9=SC;v10=v1.tf_pc;v11=v1.tf_endPc;PC=v1.tf_finallyPc;break L0;}}if((v2||v7||v4)&&(v11<=v0||v0<=v10)){v2=false;v3=undefined;v7=false;v8=0;v9=undefined;v4=false;v5=0;v6=undefined;}PC=v0;}": {
+   "mnemonic": "JMP_UNWIND"
+  },
+  "let v0=S[SP-3];let v1=S[SP-2];let v2=S[SP-1];S[SP-3]=v1;S[SP-2]=v2;S[SP-1]=v0;PC++;": {
+   "mnemonic": "ROT_BOTTOM_UP"
+  },
+  "L0:{if(null!==v0){v1=false;v2=false;v3=false;let v4=v0;v0=null;throw v4;}if(v1){if(TF&&0<TF.length){let v5=TF[TF.length-1];if(undefined!==v5.tf_finallyPc){v6=v5.tf_pc;v7=v5.tf_endPc;PC=v5.tf_finallyPc;break L0;}}let v8=v9;v1=false;v9=undefined;v10=v8;return 1;}if(v2){if(TF&&0<TF.length){let v11=TF[TF.length-1];if(undefined!==v11.tf_finallyPc&&(v11.tf_endPc<=v12||v12<=v11.tf_pc)){v6=v11.tf_pc;v7=v11.tf_endPc;PC=v11.tf_finallyPc;break L0;}}let v13=v12;v2=false;v12=0;if(undefined!==v14){SC=v14;v14=undefined;}PC=v13;break L0;}if(v3){if(TF&&0<TF.length){let v15=TF[TF.length-1];if(undefined!==v15.tf_finallyPc&&(v15.tf_endPc<=v16||v16<=v15.tf_pc)){v6=v15.tf_pc;v7=v15.tf_endPc;PC=v15.tf_finallyPc;break L0;}}let v17=v16;v3=false;v16=0;if(undefined!==v18){SC=v18;v18=undefined;}PC=v17;break L0;}PC++;}": {
+   "mnemonic": "FINALLY_END"
+  },
+  "let v0=S[--SP];S[SP++]=v0.next();PC++;": {
+   "mnemonic": "ITER_NEXT_CALL"
+  },
+  "ARGS[OP]=S[--SP];PC++;": {
+   "mnemonic": "STORE_ARG"
+  },
+  "if(DERIVED&&!v0){let v1=v2(SC);if(undefined===v1){throw new ReferenceError(\"Must call super constructor in derived class before accessing 'this' or returning from derived constructor\");}else{THIS=v1;v0=true;}}S[SP++]=THIS;PC++;": {
+   "mnemonic": "PUSH_THIS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v0==v1;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "=="
+  },
+  "let v0=S[--SP];let v1=v0&&v0.i?v0.i:v0;if(null===v2){let v3=null==v1?undefined:v1.return;if(null==v3){S[SP++]=Promise.resolve();}else if(\"function\"===typeof v3){S[SP++]=Promise.resolve(v3.call(v1));}else{S[SP++]=Promise.reject(new TypeError(\"iterator 'return' is not callable\"));}}else{try{if(v1&&\"function\"===typeof v1.return){S[SP++]=Promise.resolve(v1.return()).catch(function(){return undefined;});}else{S[SP++]=Promise.resolve();}}catch(v4){S[SP++]=Promise.resolve();}}PC++;": {
+   "mnemonic": "ASYNC_ITER_CLOSE"
+  },
+  "let v0=OP;let v1=S[--SP];SC.sc_slots[v0]=v1;let v2=SC.sc_constFlags;if(!v2){v2=Object_create(null);SC.sc_constFlags=v2;}v2[v0]=1;PC++;": {
+   "mnemonic": "STORE_LOCAL_CONST"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1+v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "+"
+  },
+  "let v0=S[SP-3];let v1=S[SP-2];let v2=S[SP-1];S[SP-3]=v2;S[SP-2]=v0;S[SP-1]=v1;PC++;": {
+   "mnemonic": "ROT_TOP_DOWN"
+  },
+  "let v0=S[--SP];S[SP++]=import(v0);PC++;": {
+   "mnemonic": "DYNAMIC_IMPORT"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1|v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "|"
+  },
+  "S[SP-1]=~S[SP-1];PC++;": {
+   "mnemonic": "UNARY",
+   "op": "~"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=K[OP];if(null===v1||undefined===v1){throw new TypeError(\"Cannot set properties of \"+v1+\" (setting '\"+String(v2)+\"')\");}if(STRICT){let v3=\"object\"===typeof v1||\"function\"===typeof v1?v1:Object(v1);if(!Reflect.set(v3,v2,v0,v1)){throw new TypeError(\"Cannot assign to read only property '\"+String(v2)+\"' of object\");}}else{v1[v2]=v0;}S[SP++]=v0;PC++;": {
+   "mnemonic": "SETPROP_NAMED"
+  },
+  "S[SP-1]=+S[SP-1];PC++;": {
+   "mnemonic": "UNARY",
+   "op": "+"
+  },
+  "let v0=S[--SP];S[SP++]=BIGINT===typeof v0?v0:+v0;PC++;": {
+   "mnemonic": "TO_NUMERIC"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=null==v0||\"object\"!==typeof v0&&\"function\"!==typeof v0?true:v1 in v0;PC++;": {
+   "mnemonic": "IN_SAFE"
+  },
+  "let v0=S[--SP];S[SP++]=H_forInKeys(v0);PC++;": {
+   "mnemonic": "FOR_IN_KEYS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1>>v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": ">>"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];if(null===v0||H_isObject(v0)){Object_setPrototypeOf(v1,v0);}PC++;": {
+   "mnemonic": "SET_PROTO"
+  },
+  "let v0=S[SP-1];S[SP++]=v0;PC++;": {
+   "mnemonic": "DUP"
+  },
+  "let v0=S[--SP];S[SP++]=Symbol.keyFor(v0);PC++;": {
+   "mnemonic": "SYMBOL_KEYFOR"
+  },
+  "let v0=S[SP-1];v0.length++;PC++;": {
+   "mnemonic": "ARR_HOLE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1<v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "<"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1 in v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "in"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v1&v0;PC++;": {
+   "mnemonic": "BINOP",
+   "op": "&"
+  },
+  "if(S[SP-1]){S[--SP];PC++;}else{PC=J[PC];}": {
+   "mnemonic": "JMPF_KEEP"
+  },
+  "L0:{let v0=J[PC];if(TF&&0<TF.length){let v1=TF[TF.length-1];if(undefined!==v1.tf_finallyPc&&(v1.tf_endPc<=v0||v0<=v1.tf_pc)){v2=false;v3=undefined;v4=false;v5=0;v6=undefined;v7=true;v8=v0;v9=SC;v10=v1.tf_pc;v11=v1.tf_endPc;PC=v1.tf_finallyPc;break L0;}}if((v2||v4||v7)&&(v11<=v0||v0<=v10)){v2=false;v3=undefined;v4=false;v5=0;v6=undefined;v7=false;v8=0;v9=undefined;}PC=v0;}": {
+   "mnemonic": "JMP_UNWIND"
+  },
+  "if(S[--SP]){S[--SP];PC++;}else{PC=J[PC];}": {
+   "mnemonic": "JMPF_POP2"
+  },
+  "let v0=S[--SP];let v1={sc_slots:new Array(OP),sc_constFlags:null,sc_selfIdx:-1,sc_parent:v0};SC=v1;PC++;": {
+   "mnemonic": "ENTER_SCOPE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];S[SP++]=v0<=v1;PC++;": {
+   "mnemonic": "BINOP",
+   "op": ">="
+  },
+  "let v0=S[--SP];let v1=S[SP-1];let v2=K[OP];Object_defineProperty(v1.prototype,v2,{value:v0,writable:true,enumerable:false,configurable:true});if(\"function\"===typeof v0){if(!NS.p0){NS.p0=new WeakMap();}WeakMap_prototype_set.call(NS.p0,v0,v1.prototype);}PC++;": {
+   "mnemonic": "DEFINE_PROTO_METHOD_NAMED"
+  },
+  "L0:{let v0=S[--SP];let v1=H_popArgs(v2,v0);let v3=S[--SP];if(1===OP){S[SP++]=v1;PC++;break L0;}if(NS.p0){PC++;break L0;}let v4=NS.p1;if(v4){let v5=v4.outer;let v6=v5?Object_getPrototypeOf(v5):v4.parent;if(\"function\"!==typeof v6){throw new TypeError(\"Super constructor \"+String(v6)+\" of \"+(v5&&v5.name||\"anonymous\")+\" is not a constructor\");}let v7=v4.newTarget;let v8=Reflect.construct(v6,v1,v7);if(THIS&&THIS!==v8){Object_getOwnPropertyNames(THIS).forEach(function(v9){if(!(v9 in v8)){v8[v9]=THIS[v9];}});}THIS=v8;v10=true;v11(SC,THIS);PC++;break L0;}if(\"function\"!==typeof v3){throw new TypeError(\"Super expression must be a constructor\");}let v12;if(v13.has(FN)){v12=v14(SC);}else{v12=v10?THIS:undefined;}let v15=NT===undefined?NS.p2:NT;NS.p2=NT;let v16;try{let v9;if(v17(v3)){v9=v3.apply(THIS,v1);}else{v9=undefined===v15?Reflect.construct(v3,v1):Reflect.construct(v3,v1,v15);}if(undefined!==v9&&THIS!==v9&&H_isObject(v9)){if(THIS){Object.assign(v9,THIS);}THIS=v9;if(NT&&NT.prototype&&NT.prototype!==Object_getPrototypeOf(THIS)){Object_setPrototypeOf(THIS,NT.prototype);}}v10=true;v11(SC,THIS);}catch(v18){let v19=v18&&\"string\"===typeof v18.message?v18.message:\"\";if(v19.includes(\"'new'\")||v19.includes(\"Illegal constructor\")){let v20=Reflect.construct(v3,v1,NT);if(THIS!==v20&&THIS){Object.assign(v20,THIS);}THIS=v20;v10=true;v11(SC,THIS);}else{v16=v18;}}finally{delete NS.p2;}if(undefined!==v16){throw v16;}if(undefined!==v12){throw new ReferenceError(\"Super constructor may only be called once\");}PC++;}": {
+   "mnemonic": "SUPER_CALL"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&H_hash(v1[32],v1[33]);let v4=v1&&v1[v3[0]*11+v3[1]&31];let v5=v1&&v1[v3[0]*3+v3[1]&31];let v6=v1&&v1[v3[0]*24+v3[1]&31];let v7=v1&&v1[v3[0]*17+v3[1]&31];let v8=v1&&v1[32]||0;let v9=v1&&v1[v3[0]*23+v3[1]&31];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];if(null!==v0&&undefined!==v0){let v2=Object(v0);let v3=Reflect.ownKeys(v2);for(let v4=0;v4<v3.length;v4++){let v5=v3[v4];let v6=Object_getOwnPropertyDescriptor(v2,v5);if(undefined!==v6&&v6.enumerable){Object_defineProperty(v1,v5,{value:v2[v5],writable:true,enumerable:true,configurable:true});}}}PC++;": {
+   "mnemonic": "OBJ_SPREAD"
+  },
+  "let v0=S[SP-1];if(null==v0){var v1=K[OP];if(null===v1){throw new TypeError(\"Cannot destructure '\"+v0+\"' as it is \"+v0+\".\");}throw new TypeError(\"Cannot destructure property '\"+v1+\"' of '\"+v0+\"' as it is \"+v0+\".\");}PC++;": {
+   "mnemonic": "DESTRUCTURE_CHECK"
+  },
+  "let v0=S[--SP];let v1=typeof v0;if(null!==v0&&(\"object\"===v1||\"function\"===v1)){let v2=Object_create(null);v2[v0]=0;v0=Reflect.ownKeys(v2)[0];}else if(\"symbol\"!==v1){v0=String(v0);}S[SP++]=v0;PC++;": {
+   "mnemonic": "TO_PROPERTY_KEY"
+  },
+  "let v0=S[--SP];if((\"object\"===typeof v0||\"function\"===typeof v0)&&null!==v0){const v1=v0[Symbol.toPrimitive];if(null==v1){const v2=v0.valueOf();if(null===v2||\"object\"!==typeof v2&&\"function\"!==typeof v2){v0=v2;}else{const v3=v0.toString();if(null!==v3&&(\"object\"===typeof v3||\"function\"===typeof v3)){throw new TypeError(\"Cannot convert object to primitive value\");}v0=v3;}}else{v0=v1.call(v0,\"number\");if(null!==v0&&(\"object\"===typeof v0||\"function\"===typeof v0)){throw new TypeError(\"Cannot convert object to primitive value\");}}}S[SP++]=BIGINT===typeof v0?v0+0x1n:+v0+1;PC++;": {
+   "mnemonic": "INC_VALUE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$Aiv3G7\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=H_toPropertyKey(S[--SP]);let v1=S[--SP];let v2=NS.p0;let v3=v2?Object_getPrototypeOf(v2):H_superProto(v1);let v4=v5(v3,v0);if(v4.desc&&v4.desc.get){let v6=NS.p0;NS.p0=v4.proto||v3;NS.p1=true;let v7;try{v7=v4.desc.get.call(v1);}finally{NS.p1=false;NS.p0=v6;}S[SP++]=v7;PC++;break L0;}if(v4.desc&&v4.desc.set&&!(\"value\"in v4.desc)){S[SP++]=undefined;PC++;break L0;}let v8=v4.proto?v4.proto[v0]:v3[v0];if(\"function\"===typeof v8){let v9=v4.proto||v3;let v10=v8.constructor&&v8.constructor.name;let v11=\"GeneratorFunction\"===v10||\"AsyncFunction\"===v10||\"AsyncGeneratorFunction\"===v10;if(!v11){if(!NS.p2){NS.p2=new WeakMap();}WeakMap_prototype_set.call(NS.p2,v8,v9);}}S[SP++]=v8;PC++;}": {
+   "mnemonic": "SUPER_GET"
+  },
+  "if(TF&&0<TF.length){let v0=TF[TF.length-1];if(PC===v0.tf_finallyPc){if(undefined!==v0.p0){v1=v0.p0;v2=v0.tf_pc;v3=v0.tf_endPc;}if(undefined!==v0.tf_scope){SC=v0.tf_scope;}TF.pop();}}PC++;": {
+   "mnemonic": "FINALLY_ENTER"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;let v2=K[v0];let v3=K[v1];S[SP++]=new RegExp(v2,v3);PC++;": {
+   "mnemonic": "NEW_REGEXP"
+  },
+  "let v0=S[--SP];if((\"object\"===typeof v0||\"function\"===typeof v0)&&null!==v0){const v1=v0[Symbol.toPrimitive];if(null==v1){const v2=v0.valueOf();if(null===v2||\"object\"!==typeof v2&&\"function\"!==typeof v2){v0=v2;}else{const v3=v0.toString();if(null!==v3&&(\"object\"===typeof v3||\"function\"===typeof v3)){throw new TypeError(\"Cannot convert object to primitive value\");}v0=v3;}}else{v0=v1.call(v0,\"number\");if(null!==v0&&(\"object\"===typeof v0||\"function\"===typeof v0)){throw new TypeError(\"Cannot convert object to primitive value\");}}}S[SP++]=BIGINT===typeof v0?v0:+v0;PC++;": {
+   "mnemonic": "TO_NUMERIC"
+  },
+  "L0:{while(TF&&0<TF.length){let v0=TF[TF.length-1];if(undefined!==v0.tf_finallyPc){break;}TF.pop();}if(TF&&0<TF.length){let v1=TF[TF.length-1];if(undefined!==v1.tf_finallyPc){v2=null;v3=false;v4=0;v5=undefined;v6=false;v7=0;v8=undefined;v9=true;v10=S[--SP];v11=v1.tf_pc;v12=v1.tf_endPc;PC=v1.tf_finallyPc;break L0;}}if(v9||v3||v6){v9=false;v10=undefined;v3=false;v4=0;v5=undefined;v6=false;v7=0;v8=undefined;}v2=null;let v13=S[--SP];if(DERIVED&&undefined===v13&&!v14){throw new ReferenceError(\"Must call super constructor in derived class before accessing 'this' or returning from derived constructor\");}v15=v13;return 1;}": {
+   "mnemonic": "RETURN"
+  },
+  "L0:{let v0=J[PC];while(TF&&0<TF.length){let v1=TF[TF.length-1];if(undefined!==v1.tf_finallyPc||!(v1.tf_endPc<=v0)&&!(v0<=v1.tf_pc)){break;}TF.pop();}if(TF&&0<TF.length){let v2=TF[TF.length-1];if(undefined!==v2.tf_finallyPc&&(v2.tf_endPc<=v0||v0<=v2.tf_pc)){v3=null;v4=false;v5=undefined;v6=false;v7=0;v8=undefined;v9=true;v10=v0;v11=SC;v12=v2.tf_pc;v13=v2.tf_endPc;PC=v2.tf_finallyPc;break L0;}}if((v4||v9||v6||null!==v3)&&(v13<=v0||v0<=v12)){v4=false;v5=undefined;v9=false;v10=0;v11=undefined;v6=false;v7=0;v8=undefined;v3=null;}PC=v0;}": {
+   "mnemonic": "JMP_UNWIND"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$Aiv3G7\";let v9=\"_$KKbizo\";let v10=\"_$eVL8pz\";function v11(...v12){let v13=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v14.v15||v11,outer:v11};v7[v9]=v14.v15||v11;let v16=v8 in v7;if(!v16){v7[v8]=v14.v15;}try{let v17=v6.apply(v13,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v13=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v13;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=H_toPropertyKey(S[--SP]);let v2=S[--SP];let v3=NS.p0;let v4=v3?Object_getPrototypeOf(v3):H_superProto(v2);if(null===v4||undefined===v4){throw new TypeError(\"Cannot convert \"+v4+\" to object\");}let v5=v6(v4,v1);let v7=false;if(v5.desc){let v8=v5.desc;if(v8.set){let v9=NS.p0;NS.p0=v5.proto||v4;NS.p1=true;try{v8.set.call(v2,v0);}finally{NS.p1=false;NS.p0=v9;}}else if(v8.get||!(\"value\"in v8)){if(STRICT){throw new TypeError(\"Cannot set property '\"+String(v1)+\"' of object which has only a getter\");}}else if(false===v8.writable){if(STRICT){throw new TypeError(\"Cannot assign to read only property '\"+String(v1)+\"' of object\");}}else{v7=true;}}else{v7=true;}if(v7){let v10=Object.getOwnPropertyDescriptor(v2,v1);if(v10){if(\"value\"in v10){if(v10.writable){v2[v1]=v0;}else if(STRICT){throw new TypeError(\"Cannot assign to read only property '\"+String(v1)+\"' of object\");}}else if(STRICT){throw new TypeError(\"Cannot redefine property: \"+String(v1));}}else{let v11=Reflect.defineProperty(v2,v1,{value:v0,writable:true,enumerable:true,configurable:true});if(!v11&&STRICT){throw new TypeError(\"Cannot assign to read only property '\"+String(v1)+\"' of object\");}}}S[SP++]=v0;PC++;": {
+   "mnemonic": "SUPER_SET"
+  },
+  "L0:{let v0=J[PC];if(v0===v1){if(null!==v2){v3=false;v4=false;v5=false;let v6=v2;v2=null;throw v6;}if(v3){while(TF&&0<TF.length){let v7=TF[TF.length-1];if(undefined!==v7.tf_finallyPc){break;}TF.pop();}if(TF&&0<TF.length){let v8=TF[TF.length-1];if(undefined!==v8.tf_finallyPc){v9=v8.tf_pc;v1=v8.tf_endPc;PC=v8.tf_finallyPc;break L0;}}let v10=v11;v3=false;v11=undefined;v12=v10;return 1;}if(v4){while(TF&&0<TF.length){let v13=TF[TF.length-1];if(undefined!==v13.tf_finallyPc||!(v13.tf_endPc<=v14)&&!(v14<=v13.tf_pc)){break;}TF.pop();}if(TF&&0<TF.length){let v15=TF[TF.length-1];if(undefined!==v15.tf_finallyPc&&(v15.tf_endPc<=v14||v14<=v15.tf_pc)){v9=v15.tf_pc;v1=v15.tf_endPc;PC=v15.tf_finallyPc;break L0;}}let v16=v14;v4=false;v14=0;if(undefined!==v17){SC=v17;v17=undefined;}PC=v16;break L0;}if(v5){while(TF&&0<TF.length){let v18=TF[TF.length-1];if(undefined!==v18.tf_finallyPc||!(v18.tf_endPc<=v19)&&!(v19<=v18.tf_pc)){break;}TF.pop();}if(TF&&0<TF.length){let v20=TF[TF.length-1];if(undefined!==v20.tf_finallyPc&&(v20.tf_endPc<=v19||v19<=v20.tf_pc)){v9=v20.tf_pc;v1=v20.tf_endPc;PC=v20.tf_finallyPc;break L0;}}let v21=v19;v5=false;v19=0;if(undefined!==v22){SC=v22;v22=undefined;}PC=v21;break L0;}}PC++;}": {
+   "mnemonic": "FINALLY_END"
+  },
+  "if(null===v0){if(STRICT||!FLAG){let v1=v2||ARGS;let v3=v1?v1.length:0;v0=Object_create(Object.prototype);for(let v4=0;v4<v3;v4++){v0[v4]=v1[v4];}Object_defineProperty(v0,\"length\",{value:v3,writable:true,enumerable:false,configurable:true});Object_defineProperty(v0,Symbol.iterator,{value:Array.prototype[Symbol.iterator],writable:true,enumerable:false,configurable:true});v0=new Proxy(v0,{has:function(v5,v6){if(Symbol.toStringTag===v6){return false;}return v6 in v5;},get:function(v5,v6,v7){if(Symbol.toStringTag===v6){return\"Arguments\";}return Reflect.get(v5,v6,v7);}});if(STRICT){Object_defineProperty(v0,\"callee\",{get:v8,set:v8,enumerable:false,configurable:false});}else{Object_defineProperty(v0,\"callee\",{value:FN,writable:true,enumerable:false,configurable:true});}}else{let v5=v9;let v6={};let v7={};let v10=FN;let v11=false;let v12=true;let v13={};let v14=function(v15){if(\"string\"!==typeof v15){return NaN;}let v16=+v15;if(0<=v16&&0===v16%1&&String(v16)===v15){return v16;}else{return NaN;}};let v17=function(v15){return!isNaN(v15)&&0<=v15;};let v18=function(v15){if(v15 in v7){return undefined;}if(v15 in v6){return v6[v15];}if(v15<v9){return ARGS[v15];}else{return undefined;}};let v19=function(v15){if(v15 in v7){return false;}if(v15 in v6){return true;}if(v15<v9){return v15 in ARGS;}else{return false;}};let v20={};Object_defineProperty(v20,\"length\",{value:v5,writable:true,enumerable:false,configurable:true});Object_defineProperty(v20,\"callee\",{value:FN,writable:true,enumerable:false,configurable:true});Object_defineProperty(v20,Symbol.iterator,{value:Array.prototype[Symbol.iterator],writable:true,enumerable:false,configurable:true});v0=new Proxy(v20,{get:function(v15,v16,v21){if(\"length\"===v16){return v5;}if(\"callee\"===v16){if(v11){return undefined;}else{return v10;}}if(Symbol.toStringTag===v16){return\"Arguments\";}let v22=v14(v16);if(v17(v22)){if(v22 in v13){return Reflect.get(v15,v16,v21);}return v18(v22);}return Reflect.get(v15,v16,v21);},set:function(v15,v16,v21){if(\"length\"===v16){if(!v12){return false;}v5=v21;v15.length=v21;return true;}if(\"callee\"===v16){v10=v21;v11=false;v15.callee=v21;return true;}let v22=v14(v16);if(v17(v22)){if(v22 in v13){return Reflect.set(v15,v16,v21);}let v23=Object_getOwnPropertyDescriptor(v15,String(v22));if(v23&&!v23.writable){return false;}if(v22 in v7){delete v7[v22];v6[v22]=v21;}else if(v22<v9){ARGS[v22]=v21;}else{v6[v22]=v21;}return true;}v15[v16]=v21;return true;},has:function(v15,v16){if(\"length\"===v16){return true;}if(\"callee\"===v16){return!v11;}if(Symbol.toStringTag===v16){return false;}let v21=v14(v16);if(v17(v21)){if(String(v21)in v15){return true;}return v19(v21);}return v16 in v15;},defineProperty:function(v15,v16,v21){if(\"length\"===v16){if(\"value\"in v21){v5=v21.value;}if(\"writable\"in v21){v12=v21.writable;}Object_defineProperty(v15,v16,v21);return true;}if(\"callee\"===v16){if(\"value\"in v21){v10=v21.value;}v11=false;Object_defineProperty(v15,v16,v21);return true;}let v22=v14(v16);if(v17(v22)){let v23=\"get\"in v21||\"set\"in v21;let v24=Object_getOwnPropertyDescriptor(v15,String(v22));let v25=v22 in v13?v24?v24.value:undefined:v18(v22);let v26=v24?false!==v24.writable:true;let v27=v24?false!==v24.enumerable:true;let v28=v24?false!==v24.configurable:true;let v29;if(v23){v29=v21;v13[v22]=1;if(v22 in v6){delete v6[v22];}if(v22 in v7){delete v7[v22];}}else{let v30=\"value\"in v21?v21.value:v25;let v31=\"writable\"in v21?v21.writable:v26;let v32=\"enumerable\"in v21?v21.enumerable:v27;let v33=\"configurable\"in v21?v21.configurable:v28;v29={value:v30,writable:v31,enumerable:v32,configurable:v33};if(\"value\"in v21&&!(v22 in v13)){if(v22<v9&&!(v22 in v7)){ARGS[v22]=v21.value;}else{v6[v22]=v21.value;if(v22 in v7){delete v7[v22];}}}if(\"writable\"in v21&&false===v21.writable){v13[v22]=1;if(v22 in v6){delete v6[v22];}if(v22 in v7){delete v7[v22];}}}Object_defineProperty(v15,String(v22),v29);return true;}Object_defineProperty(v15,v16,v21);return true;},deleteProperty:function(v15,v16){if(\"callee\"===v16){v11=true;delete v15.callee;return true;}let v21=v14(v16);if(v17(v21)){let v23=Object_getOwnPropertyDescriptor(v15,String(v21));if(v23&&false===v23.configurable){return false;}if(v21 in v13){delete v13[v21];}if(v21<v9){v7[v21]=1;}else{delete v6[v21];}delete v15[v16];return true;}let v22=Object_getOwnPropertyDescriptor(v15,v16);if(v22&&false===v22.configurable){return false;}delete v15[v16];return true;},preventExtensions:function(v15){let v16=v9;for(let v21=0;v21<v16;v21++){if(!(v21 in v7)&&!Object_getOwnPropertyDescriptor(v15,String(v21))){Object_defineProperty(v15,String(v21),{value:v18(v21),writable:true,enumerable:true,configurable:true});}}for(let v22 in v6){if(!Object_getOwnPropertyDescriptor(v15,v22)){Object_defineProperty(v15,v22,{value:v6[v22],writable:true,enumerable:true,configurable:true});}}Object.preventExtensions(v15);return true;},getOwnPropertyDescriptor:function(v15,v16){if(\"callee\"===v16){if(v11){return undefined;}return Object_getOwnPropertyDescriptor(v15,\"callee\");}if(\"length\"===v16){return Object_getOwnPropertyDescriptor(v15,\"length\");}let v21=v14(v16);if(v17(v21)){if(v21 in v13){return Object_getOwnPropertyDescriptor(v15,v16);}if(v19(v21)){let v23=Object_getOwnPropertyDescriptor(v15,String(v21));return{value:v18(v21),writable:v23?v23.writable:true,enumerable:v23?v23.enumerable:true,configurable:v23?v23.configurable:true};}return Object_getOwnPropertyDescriptor(v15,v16);}let v22=Object_getOwnPropertyDescriptor(v15,v16);if(v22){return v22;}return undefined;},ownKeys:function(v15){let v16=[];let v21=v9;for(let v23=0;v23<v21;v23++){if(!(v23 in v7)){v16.push(String(v23));}}for(let v24 in v6){if(-1===v16.indexOf(v24)){v16.push(v24);}}v16.push(\"length\");if(!v11){v16.push(\"callee\");}let v22=Reflect.ownKeys(v15);for(let v25=0;v25<v22.length;v25++){if(-1===v16.indexOf(v22[v25])){v16.push(v22[v25]);}}return v16;}});}}S[SP++]=v0;PC++;": {
+   "mnemonic": "PUSH_ARGUMENTS"
+  },
+  "let v0=S[--SP];if((\"object\"===typeof v0||\"function\"===typeof v0)&&null!==v0){const v1=v0[Symbol.toPrimitive];if(null==v1){const v2=v0.valueOf();if(null===v2||\"object\"!==typeof v2&&\"function\"!==typeof v2){v0=v2;}else{const v3=v0.toString();if(null!==v3&&(\"object\"===typeof v3||\"function\"===typeof v3)){throw new TypeError(\"Cannot convert object to primitive value\");}v0=v3;}}else{v0=v1.call(v0,\"number\");if(null!==v0&&(\"object\"===typeof v0||\"function\"===typeof v0)){throw new TypeError(\"Cannot convert object to primitive value\");}}}S[SP++]=BIGINT===typeof v0?v0-0x1n:+v0-1;PC++;": {
+   "mnemonic": "DEC_VALUE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2={};if(null!==v1&&undefined!==v1){let v3=Object(v1);let v4=Reflect.ownKeys(v3);for(let v5=0;v5<v4.length;v5++){let v6=v4[v5];let v7=false;for(let v8=0;v8<v0.length;v8++){let v9=v0[v8];if((\"symbol\"===typeof v9?v9:String(v9))===v6){v7=true;break;}}if(v7){continue;}let v10=Object_getOwnPropertyDescriptor(v3,v6);if(undefined!==v10&&v10.enumerable){Object_defineProperty(v2,v6,{value:v3[v6],writable:true,enumerable:true,configurable:true});}}}S[SP++]=v2;PC++;": {
+   "mnemonic": "OBJ_REST"
+  },
+  "let v0=OP&65535;let v1=OP>>>16;let v2=R[v0];let v3=K[v1];if(null===v2||undefined===v2){throw new TypeError(\"Cannot read properties of \"+v2+\" (reading '\"+String(v3)+\"')\");}S[SP++]=v2[v3];PC++;": {
+   "mnemonic": "GETPROP_REG_CONST"
+  },
+  "let v0=S[--SP];let v1;if(null===v0||undefined===v0){throw new TypeError(v0+\" is not iterable\");}let v2=v0[Symbol_iterator];if(Array.isArray(v0)&&v2===v3){let v4=v0.length;v1=new Array(v4);for(let v5=0;v5<v4;v5++){v1[v5]=v0[v5];}}else{if(null===v2||undefined===v2||\"function\"!==typeof v2){throw new TypeError(v0+\" is not iterable\");}let v6=Reflect_apply(v2,v0,[]);if(null===v6||\"object\"!==typeof v6){throw new TypeError(\"Iterator method returned a non-object value\");}v1=[];while(true){let v7=v6.next();H_checkIterResult(v7);if(v7.done){break;}v1.push(v7.value);}}let v8={value:v1};WeakSet_prototype_add.call(v9,v8);S[SP++]=v8;PC++;": {
+   "mnemonic": "SPREAD_MARK"
+  },
+  "let v0=S[--SP];let v1=S[SP-1];if(Array.isArray(v0)&&v0[Symbol_iterator]===v2){let v3=v1.length;let v4=v0.length;for(let v5=0;v5<v4;v5++){v1[v3+v5]=v0[v5];}}else{for(let v6 of v0){v1.push(v6);}}PC++;": {
+   "mnemonic": "ARR_SPREAD"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=PROG===v5?v12:H_hash(v5[32],v5[33]);let v13=v5[v11[0]*15+v11[1]&31];if(v13&&PROG===v5&&!v5[v11[0]*10+v11[1]&31]&&PSC===v3.e){if(!v14){v14=[];}v14[v15++]=ARGS;v14[v15++]=v16;v14[v15++]=v17;v14[v15++]=SP;v14[v15++]=PC;v14[v15++]=SC;for(let v18=0;v18<v19;v18++){v14[v15++]=R[v18];}ARGS=v7;v16=null;if(v5[v11[0]*2+v11[1]&31]){v17=null;let v20=v5[32]||0;for(let v21=0;v21<v20&&v21<v7.length;v21++){R[v21]=v7[v21];}for(let v22=v7.length<v20?v7.length:v20;v22<v19;v22++){R[v22]=undefined;}PC=v13;}else{v17=H_sliceArgs(v7);for(let v23=0;v23<v19;v23++){R[v23]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v24(v7,undefined,undefined,v3.e,v5,v1);PC++;break L0;}}let v25=NS.p1;let v26=NS.p0;let v27=v26&&WeakMap_prototype_get.call(v26,v1);if(v27){NS.p3=true;NS.p1=v27;}else{NS.p1=undefined;}let v28;try{if(0===v0){v28=v1();}else if(1===v0){let v29=S[--SP];v28=v29&&\"object\"===typeof v29&&WeakSet_prototype_has.call(v9,v29)?Reflect_apply(v1,undefined,v29.value):v1(v29);}else{v28=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v28;}finally{if(v27){NS.p3=false;}NS.p1=v25;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "L0:{let v0=J[PC];while(TF&&0<TF.length){let v1=TF[TF.length-1];if(undefined!==v1.tf_finallyPc||!(v1.tf_endPc<=v0)&&!(v0<=v1.tf_pc)){break;}TF.pop();}if(TF&&0<TF.length){let v2=TF[TF.length-1];if(undefined!==v2.tf_finallyPc&&(v2.tf_endPc<=v0||v0<=v2.tf_pc)){v3=null;v4=false;v5=undefined;v6=false;v7=0;v8=undefined;v9=true;v10=v0;v11=SC;v12=v2.tf_pc;v13=v2.tf_endPc;PC=v2.tf_finallyPc;break L0;}}if((v4||v6||v9||null!==v3)&&(v13<=v0||v0<=v12)){v4=false;v5=undefined;v6=false;v7=0;v8=undefined;v9=false;v10=0;v11=undefined;v3=null;}PC=v0;}": {
+   "mnemonic": "JMP_UNWIND"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=PROG===v5?v12:H_hash(v5[32],v5[33]);let v13=v5[v11[0]*9+v11[1]&31];if(v13&&PROG===v5&&!v5[v11[0]*0+v11[1]&31]&&PSC===v3.e){if(!v14){v14=[];}v14[v15++]=SC;v14[v15++]=ARGS;v14[v15++]=v16;v14[v15++]=PC;v14[v15++]=SP;v14[v15++]=v17;for(let v18=0;v18<v19;v18++){v14[v15++]=R[v18];}ARGS=v7;v17=null;if(v5[v11[0]*20+v11[1]&31]){v16=null;let v20=v5[32]||0;for(let v21=0;v21<v20&&v21<v7.length;v21++){R[v21]=v7[v21];}for(let v22=v7.length<v20?v7.length:v20;v22<v19;v22++){R[v22]=undefined;}PC=v13;}else{v16=H_sliceArgs(v7);for(let v23=0;v23<v19;v23++){R[v23]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v24(v5,v3.e,v7,undefined,v1,undefined);PC++;break L0;}}let v25=NS.p1;let v26=NS.p0;let v27=v26&&WeakMap_prototype_get.call(v26,v1);if(v27){NS.p3=true;NS.p1=v27;}else{NS.p1=undefined;}let v28;try{if(0===v0){v28=v1();}else if(1===v0){let v29=S[--SP];v28=v29&&\"object\"===typeof v29&&WeakSet_prototype_has.call(v9,v29)?Reflect_apply(v1,undefined,v29.value):v1(v29);}else{v28=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v28;}finally{if(v27){NS.p3=false;}NS.p1=v25;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&H_hash(v1[32],v1[33]);let v4=v1&&v1[v3[0]*14+v3[1]&31];let v5=v1&&v1[v3[0]*5+v3[1]&31];let v6=v1&&v1[v3[0]*19+v3[1]&31];let v7=v1&&v1[v3[0]*17+v3[1]&31];let v8=v1&&v1[32]||0;let v9=v1&&v1[v3[0]*22+v3[1]&31];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$3O5Tio\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$3O5Tio\";let v9=\"_$3ycdRY\";let v10=\"_$A3EE4C\";function v11(...v12){let v13=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v14.v15||v11,outer:v11};v7[v9]=v14.v15||v11;let v16=v8 in v7;if(!v16){v7[v8]=v14.v15;}try{let v17=v6.apply(v13,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v13=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v13;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$tYDP8H\";let v9=\"_$KxJ4ir\";let v10=\"_$ta5H7m\";function v11(...v12){let v13=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v14.v15||v11,outer:v11};v7[v9]=v14.v15||v11;let v16=v8 in v7;if(!v16){v7[v8]=v14.v15;}try{let v17=v6.apply(v13,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v13=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v13;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&H_hash(v1[32],v1[33]);let v4=v1&&v1[v3[0]*14+v3[1]&31];let v5=v1&&v1[v3[0]*11+v3[1]&31];let v6=v1&&v1[v3[0]*10+v3[1]&31];let v7=v1&&v1[v3[0]*7+v3[1]&31];let v8=v1&&v1[32]||0;let v9=v1&&v1[v3[0]*3+v3[1]&31];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$tYDP8H\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=PROG===v5?v12:H_hash(v5[32],v5[33]);let v13=v5[v11[0]*6+v11[1]&31];if(v13&&PROG===v5&&!v5[v11[0]*18+v11[1]&31]&&PSC===v3.e){if(!v14){v14=[];}v14[v15++]=v16;v14[v15++]=ARGS;v14[v15++]=SP;v14[v15++]=v17;v14[v15++]=SC;v14[v15++]=PC;for(let v18=0;v18<v19;v18++){v14[v15++]=R[v18];}ARGS=v7;v16=null;if(v5[v11[0]*21+v11[1]&31]){v17=null;let v20=v5[32]||0;for(let v21=0;v21<v20&&v21<v7.length;v21++){R[v21]=v7[v21];}for(let v22=v7.length<v20?v7.length:v20;v22<v19;v22++){R[v22]=undefined;}PC=v13;}else{v17=H_sliceArgs(v7);for(let v23=0;v23<v19;v23++){R[v23]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v24(v3.e,v1,undefined,undefined,v7,v5);PC++;break L0;}}let v25=NS.p1;let v26=NS.p0;let v27=v26&&WeakMap_prototype_get.call(v26,v1);if(v27){NS.p3=true;NS.p1=v27;}else{NS.p1=undefined;}let v28;try{if(0===v0){v28=v1();}else if(1===v0){let v29=S[--SP];v28=v29&&\"object\"===typeof v29&&WeakSet_prototype_has.call(v9,v29)?Reflect_apply(v1,undefined,v29.value):v1(v29);}else{v28=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v28;}finally{if(v27){NS.p3=false;}NS.p1=v25;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$33ZDSh\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=PROG===v5?v12:H_hash(v5[32],v5[33]);let v13=v5[v11[0]*4+v11[1]&31];if(v13&&PROG===v5&&!v5[v11[0]*17+v11[1]&31]&&PSC===v3.e){if(!v14){v14=[];}v14[v15++]=SP;v14[v15++]=SC;v14[v15++]=PC;v14[v15++]=v16;v14[v15++]=v17;v14[v15++]=ARGS;for(let v18=0;v18<v19;v18++){v14[v15++]=R[v18];}ARGS=v7;v17=null;if(v5[v11[0]*21+v11[1]&31]){v16=null;let v20=v5[32]||0;for(let v21=0;v21<v20&&v21<v7.length;v21++){R[v21]=v7[v21];}for(let v22=v7.length<v20?v7.length:v20;v22<v19;v22++){R[v22]=undefined;}PC=v13;}else{v16=H_sliceArgs(v7);for(let v23=0;v23<v19;v23++){R[v23]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v24(v7,v1,undefined,undefined,v5,v3.e);PC++;break L0;}}let v25=NS.p1;let v26=NS.p0;let v27=v26&&WeakMap_prototype_get.call(v26,v1);if(v27){NS.p3=true;NS.p1=v27;}else{NS.p1=undefined;}let v28;try{if(0===v0){v28=v1();}else if(1===v0){let v29=S[--SP];v28=v29&&\"object\"===typeof v29&&WeakSet_prototype_has.call(v9,v29)?Reflect_apply(v1,undefined,v29.value):v1(v29);}else{v28=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v28;}finally{if(v27){NS.p3=false;}NS.p1=v25;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$33ZDSh\";let v9=\"_$ekSMTV\";let v10=\"_$AGZfS7\";function v11(...v12){let v13=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v14.v15||v11,outer:v11};v7[v9]=v14.v15||v11;let v16=v8 in v7;if(!v16){v7[v8]=v14.v15;}try{let v17=v6.apply(v13,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v13=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v13;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&H_hash(v1[32],v1[33]);let v4=v1&&v1[v3[0]*16+v3[1]&31];let v5=v1&&v1[v3[0]*8+v3[1]&31];let v6=v1&&v1[v3[0]*11+v3[1]&31];let v7=v1&&v1[v3[0]*7+v3[1]&31];let v8=v1&&v1[32]||0;let v9=v1&&v1[v3[0]*15+v3[1]&31];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$Gsk93X\";let v9=\"_$FrocMx\";let v10=\"_$7lDVyk\";function v11(...v12){let v13=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v14.v15||v11,outer:v11};v7[v9]=v14.v15||v11;let v16=v8 in v7;if(!v16){v7[v8]=v14.v15;}try{let v17=v6.apply(v13,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v13=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v13;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&H_hash(v1[32],v1[33]);let v4=v1&&v1[v3[0]*2+v3[1]&31];let v5=v1&&v1[v3[0]*8+v3[1]&31];let v6=v1&&v1[v3[0]*1+v3[1]&31];let v7=v1&&v1[v3[0]*18+v3[1]&31];let v8=v1&&v1[32]||0;let v9=v1&&v1[v3[0]*13+v3[1]&31];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$Gsk93X\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=PROG===v5?v12:H_hash(v5[32],v5[33]);let v13=v5[v11[0]*9+v11[1]&31];if(v13&&PROG===v5&&!v5[v11[0]*6+v11[1]&31]&&PSC===v3.e){if(!v14){v14=[];}v14[v15++]=v16;v14[v15++]=PC;v14[v15++]=ARGS;v14[v15++]=SC;v14[v15++]=SP;v14[v15++]=v17;for(let v18=0;v18<v19;v18++){v14[v15++]=R[v18];}ARGS=v7;v16=null;if(v5[v11[0]*23+v11[1]&31]){v17=null;let v20=v5[32]||0;for(let v21=0;v21<v20&&v21<v7.length;v21++){R[v21]=v7[v21];}for(let v22=v7.length<v20?v7.length:v20;v22<v19;v22++){R[v22]=undefined;}PC=v13;}else{v17=H_sliceArgs(v7);for(let v23=0;v23<v19;v23++){R[v23]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v24(v5,v7,undefined,undefined,v3.e,v1);PC++;break L0;}}let v25=NS.p1;let v26=NS.p0;let v27=v26&&WeakMap_prototype_get.call(v26,v1);if(v27){NS.p3=true;NS.p1=v27;}else{NS.p1=undefined;}let v28;try{if(0===v0){v28=v1();}else if(1===v0){let v29=S[--SP];v28=v29&&\"object\"===typeof v29&&WeakSet_prototype_has.call(v9,v29)?Reflect_apply(v1,undefined,v29.value):v1(v29);}else{v28=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v28;}finally{if(v27){NS.p3=false;}NS.p1=v25;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&H_hash(v1[32],v1[33]);let v4=v1&&v1[v3[0]*4+v3[1]&31];let v5=v1&&v1[v3[0]*15+v3[1]&31];let v6=v1&&v1[v3[0]*21+v3[1]&31];let v7=v1&&v1[v3[0]*9+v3[1]&31];let v8=v1&&v1[32]||0;let v9=v1&&v1[v3[0]*22+v3[1]&31];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=PROG===v5?v12:H_hash(v5[32],v5[33]);let v13=v5[v11[0]*20+v11[1]&31];if(v13&&PROG===v5&&!v5[v11[0]*0+v11[1]&31]&&PSC===v3.e){if(!v14){v14=[];}v14[v15++]=ARGS;v14[v15++]=v16;v14[v15++]=PC;v14[v15++]=SC;v14[v15++]=v17;v14[v15++]=SP;for(let v18=0;v18<v19;v18++){v14[v15++]=R[v18];}ARGS=v7;v17=null;if(v5[v11[0]*11+v11[1]&31]){v16=null;let v20=v5[32]||0;for(let v21=0;v21<v20&&v21<v7.length;v21++){R[v21]=v7[v21];}for(let v22=v7.length<v20?v7.length:v20;v22<v19;v22++){R[v22]=undefined;}PC=v13;}else{v16=H_sliceArgs(v7);for(let v23=0;v23<v19;v23++){R[v23]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v24(v1,undefined,v5,undefined,v7,v3.e);PC++;break L0;}}let v25=NS.p1;let v26=NS.p0;let v27=v26&&WeakMap_prototype_get.call(v26,v1);if(v27){NS.p3=true;NS.p1=v27;}else{NS.p1=undefined;}let v28;try{if(0===v0){v28=v1();}else if(1===v0){let v29=S[--SP];v28=v29&&\"object\"===typeof v29&&WeakSet_prototype_has.call(v9,v29)?Reflect_apply(v1,undefined,v29.value):v1(v29);}else{v28=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v28;}finally{if(v27){NS.p3=false;}NS.p1=v25;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$OIM4lf\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$OIM4lf\";let v9=\"_$ChsVIy\";let v10=\"_$3k3uOa\";function v11(...v12){let v13=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v14.v15||v11,outer:v11};v7[v9]=v14.v15||v11;let v16=v8 in v7;if(!v16){v7[v8]=v14.v15;}try{let v17=v6.apply(v13,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v13=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v13;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*19+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*16+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=SP;v16[v17++]=PC;v16[v17++]=ARGS;v16[v17++]=v18;v16[v17++]=SC;v16[v17++]=v19;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v18=null;if(v5[v13[0]*25+v13[1]&31]){v19=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v19=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(undefined,v9,v5,v1,v3.p6,undefined);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$sCmkHQ\";let v9=\"_$OQCIoX\";let v10=\"_$7p7ti9\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$sCmkHQ\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=H_popArgs(v2,v0);let v3=S[--SP];if(1===OP){S[SP++]=v1;PC++;break L0;}if(NS.p0){PC++;break L0;}let v4=NS.p1;if(v4){let v5=v4.outer;let v6=v5?Object_getPrototypeOf(v5):v4.parent;if(\"function\"!==typeof v6){throw new TypeError(\"Super constructor \"+String(v6)+\" of \"+(v5&&v5.name||\"anonymous\")+\" is not a constructor\");}let v7=v4.newTarget;let v8=Reflect.construct(v6,v1,v7);if(THIS&&THIS!==v8){Object_getOwnPropertyNames(THIS).forEach(function(v9){if(!(v9 in v8)){v8[v9]=THIS[v9];}});}THIS=v8;v10=true;v11(SC,THIS);PC++;break L0;}if(\"function\"!==typeof v3){throw new TypeError(\"Super expression must be a constructor\");}let v12;if(v13.has(FN)){v12=v14(SC);}else{v12=v10?THIS:undefined;}let v15=NT===undefined?NS.p2:NT;NS.p2=NT;try{let v9;if(v16(v3)){v9=v17(v3,THIS,v1);}else{v9=undefined===v15?Reflect.construct(v3,v1):Reflect.construct(v3,v1,v15);}if(undefined!==v9&&THIS!==v9&&H_isObject(v9)){if(THIS){Object.assign(v9,THIS);}THIS=v9;if(NT&&NT.prototype&&NT.prototype!==Object_getPrototypeOf(THIS)){Object_setPrototypeOf(THIS,NT.prototype);}}v10=true;v11(SC,THIS);}finally{delete NS.p2;}if(undefined!==v12){throw new ReferenceError(\"Super constructor may only be called once\");}PC++;}": {
+   "mnemonic": "SUPER_CALL"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3){let v5=v3.c||=\"object\"===typeof v3.b?v3.b:v6(v3.b);if(v5){let v7;if(0===v0){v7=[];}else if(1===v0){let v8=S[--SP];v7=v8&&\"object\"===typeof v8&&WeakSet_prototype_has.call(v9,v8)?v8.value:[v8];}else{v7=H_popArgs(v10,v0);}let v11=PROG===v5?v12:H_hash(v5[32],v5[33]);let v13=v5[v11[0]*7+v11[1]&31];if(v13&&PROG===v5&&!v5[v11[0]*17+v11[1]&31]&&PSC===v3.e){if(!v14){v14=[];}v14[v15++]=ARGS;v14[v15++]=SC;v14[v15++]=SP;v14[v15++]=v16;v14[v15++]=v17;v14[v15++]=PC;for(let v18=0;v18<v19;v18++){v14[v15++]=R[v18];}ARGS=v7;v16=null;if(v5[v11[0]*2+v11[1]&31]){v17=null;let v20=v5[32]||0;for(let v21=0;v21<v20&&v21<v7.length;v21++){R[v21]=v7[v21];}for(let v22=v7.length<v20?v7.length:v20;v22<v19;v22++){R[v22]=undefined;}PC=v13;}else{v17=H_sliceArgs(v7);for(let v23=0;v23<v19;v23++){R[v23]=undefined;}PC=0;}break L0;}if(NS.p3){NS.p3=false;}else{NS.p1=undefined;}S[SP++]=v24(undefined,undefined,v1,v3.e,v7,v5);PC++;break L0;}}let v25=NS.p1;let v26=NS.p0;let v27=v26&&WeakMap_prototype_get.call(v26,v1);if(v27){NS.p3=true;NS.p1=v27;}else{NS.p1=undefined;}let v28;try{if(0===v0){v28=v1();}else if(1===v0){let v29=S[--SP];v28=v29&&\"object\"===typeof v29&&WeakSet_prototype_has.call(v9,v29)?Reflect_apply(v1,undefined,v29.value):v1(v29);}else{v28=Reflect_apply(v1,undefined,H_popArgs(v10,v0));}S[SP++]=v28;}finally{if(v27){NS.p3=false;}NS.p1=v25;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){if(v4){if(v5){NS.p0=v6;}let v7=\"_$GdYfI7\"in NS;if(!v7){NS.p1=v8.v9;}try{let v10=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v10&&(null===v10||\"object\"!==typeof v10&&\"function\"!==typeof v10)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v10;}finally{if(v5){delete NS.p0;}if(!v7){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v11(v3)){let v4=v12(v1);if(v4){v13(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$GdYfI7\";let v9=\"_$Pw3DL6\";let v10=\"_$Am6egV\";function v11(...v12){let v13=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v14.v15||v11,outer:v11};v7[v9]=v14.v15||v11;let v16=v8 in v7;if(!v16){v7[v8]=v14.v15;}try{let v17=v6.apply(v13,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v13=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v13;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=\"object\"===typeof v0?v0:v2(v0);v0=v1;let v3=v1&&H_hash(v1[32],v1[33]);let v4=v1&&v1[v3[0]*4+v3[1]&31];let v5=v1&&v1[v3[0]*9+v3[1]&31];let v6=v1&&v1[v3[0]*15+v3[1]&31];let v7=v1&&v1[v3[0]*16+v3[1]&31];let v8=v1&&v1[32]||0;let v9=v1&&v1[v3[0]*3+v3[1]&31];let v10=v4?LT:undefined;let v11=SC;let v12;if(v6){v12=v13(v14,v0,v11,v15,v9,G,v5);}else if(v5){if(v4){v12=v16(v17,v0,v11,v10);}else{v12=v18(v17,v0,v11,v9,G);}}else if(v4){v12=v19(v20,v0,v11,v10);let v21=NS.p0;if(undefined===v21&&FN&&v22.has(FN)){v21=v22.get(FN);}if(undefined!==v21){v22.set(v12,v21);}}else{v12=v23(v20,v0,v11,v9,G,v7);}H_safeDefine(v12,\"length\",{value:v8,writable:false,enumerable:false,configurable:true});S[SP++]=v12;PC++;": {
+   "mnemonic": "MAKE_CLOSURE"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*12+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*13+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=SC;v16[v17++]=v18;v16[v17++]=ARGS;v16[v17++]=PC;v16[v17++]=SP;v16[v17++]=v19;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v18=null;if(v5[v13[0]*15+v13[1]&31]){v19=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v19=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(v5,v1,undefined,v3.p6,undefined,v9);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$wu8VeN\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$wu8VeN\";let v9=\"_$22LqJ5\";let v10=\"_$pTjGwj\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*25+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*12+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=v18;v16[v17++]=PC;v16[v17++]=SC;v16[v17++]=ARGS;v16[v17++]=SP;v16[v17++]=v19;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v19=null;if(v5[v13[0]*20+v13[1]&31]){v18=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v18=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(v9,v3.p6,undefined,v1,v5,undefined);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$s2VFq5\";let v9=\"_$oH1WEa\";let v10=\"_$I7tVgu\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$s2VFq5\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*16+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*14+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=SP;v16[v17++]=v18;v16[v17++]=PC;v16[v17++]=ARGS;v16[v17++]=SC;v16[v17++]=v19;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v19=null;if(v5[v13[0]*3+v13[1]&31]){v18=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v18=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(v3.p6,undefined,v9,v1,v5,undefined);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$eV7k4V\";let v9=\"_$X7vxmf\";let v10=\"_$I49tFx\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$eV7k4V\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$hrfSbJ\";let v9=\"_$DvRSmt\";let v10=\"_$R460RZ\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*13+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*17+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=PC;v16[v17++]=v18;v16[v17++]=SP;v16[v17++]=SC;v16[v17++]=ARGS;v16[v17++]=v19;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v19=null;if(v5[v13[0]*7+v13[1]&31]){v18=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v18=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(v1,v5,undefined,undefined,v9,v3.p6);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$hrfSbJ\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*21+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*16+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=v18;v16[v17++]=ARGS;v16[v17++]=SC;v16[v17++]=SP;v16[v17++]=PC;v16[v17++]=v19;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v18=null;if(v5[v13[0]*6+v13[1]&31]){v19=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v19=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(v9,v1,undefined,undefined,v3.p6,v5);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$z03L8W\";let v9=\"_$RlCi21\";let v10=\"_$05Nu0v\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$z03L8W\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*18+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*23+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=v18;v16[v17++]=v19;v16[v17++]=SC;v16[v17++]=SP;v16[v17++]=ARGS;v16[v17++]=PC;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v18=null;if(v5[v13[0]*12+v13[1]&31]){v19=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v19=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(v3.p6,v5,v9,v1,undefined,undefined);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$Np3GIb\";let v9=\"_$dYFGXI\";let v10=\"_$1WKOg3\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$Np3GIb\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[SP-1];if(null===v0){Object_setPrototypeOf(v1.prototype,null);Object_setPrototypeOf(v1,Function.prototype);v1.p0=null;PC++;break L0;}if(\"function\"!==typeof v0){throw new TypeError(\"Class extends value \"+String(v0)+\" is not a constructor or null\");}let v2=false;let v3=v4(v0);if(!v3){let v5=Object_getOwnPropertyDescriptor(v0,\"prototype\");v2=!!v5&&false===v5.writable;}if(v2){let v6=v1;let v7=NS;let v8=\"_$bhyKbx\";let v9=\"_$KTUUCr\";let v10=\"_$MevMlX\";function v11(...v12){if(undefined===v13.v14){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}let v15=Object_create(v0.prototype);v7[v10]={parent:v0,newTarget:v13.v14||v11,outer:v11};v7[v9]=v13.v14||v11;let v16=v8 in v7;if(!v16){v7[v8]=v13.v14;}try{let v17=v18(v6,v15,v12);if(undefined!==v17&&null!==v17&&H_isObject(v17)){v15=v17;}}finally{delete v7[v10];delete v7[v9];if(!v16){delete v7[v8];}}return v15;}v11.prototype=Object_create(v0.prototype);v11.prototype.constructor=v11;Object_setPrototypeOf(v11,v0);Object_getOwnPropertyNames(v6).forEach(function(v12){if(\"prototype\"!==v12&&\"name\"!==v12){H_safeDefine(v11,v12,Object_getOwnPropertyDescriptor(v6,v12));}});if(v6.prototype){Object_getOwnPropertyNames(v6.prototype).forEach(function(v12){if(\"constructor\"!==v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));}});Object_getOwnPropertySymbols(v6.prototype).forEach(function(v12){H_safeDefine(v11.prototype,v12,Object_getOwnPropertyDescriptor(v6.prototype,v12));});}S[--SP];S[SP++]=v11;v11.p0=v0;PC++;break L0;}Object_setPrototypeOf(v1.prototype,v0.prototype);Object_setPrototypeOf(v1,v0);v1.p0=v0;PC++;}": {
+   "mnemonic": "CLASS_EXTENDS"
+  },
+  "let v0=S[--SP];let v1=S[--SP];let v2=OP;let v3=function(v4,v5){let v6=function(){let v7=v6===v8;v8=undefined;if(undefined===v9.v10&&!v7){throw new TypeError(\"Class constructor cannot be invoked without 'new'\");}if(v4){if(v5){NS.p0=v6;}let v11=\"_$bhyKbx\"in NS;if(!v11){NS.p1=v9.v10;}try{let v12=v4.apply(this,H_sliceArgs(arguments));if(v5&&undefined!==v12&&(null===v12||\"object\"!==typeof v12&&\"function\"!==typeof v12)){throw new TypeError(\"Derived constructors may only return object or undefined\");}return v12;}finally{if(v5){delete NS.p0;}if(!v11){delete NS.p1;}}}};return v6;}(v1,v2);if(v0){Object_defineProperty(v3,\"name\",{value:v0,configurable:true});}if(v1){Object_defineProperty(v3,\"length\",{value:v1.length,configurable:true});}if(v1&&!v13(v3)){let v4=v14(v1);if(v4){v4.p2=false;v15(v3,v4);}}S[SP++]=v3;PC++;": {
+   "mnemonic": "MAKE_CLASS"
+  },
+  "L0:{let v0=S[--SP];let v1=S[--SP];if(\"function\"!==typeof v1){throw new TypeError(v1+\" is not a function\");}let v2=NS.p0;let v3=!NS.p1&&!NS.p2&&(!v2||!WeakMap_prototype_get.call(v2,v1))&&v4(v1);if(v3&&false!==v3.p3){let v5=v3.p4||v6(v3,\"object\"===typeof v3.p5?undefined===v3.p5.n?v3.p5:0?v7(v3.p5.n):v3.p5.d||=v7(v3.p5.n):v8(v3.p5));if(v5){let v9;if(0===v0){v9=[];}else if(1===v0){let v10=S[--SP];v9=v10&&\"object\"===typeof v10&&WeakSet_prototype_has.call(v11,v10)?v10.value:[v10];}else{v9=H_popArgs(v12,v0);}let v13=PROG===v5?v14:H_hash(v5[32],v5[33]);let v15=v5[v13[0]*24+v13[1]&31];if(v15&&PROG===v5&&!v5[v13[0]*21+v13[1]&31]&&PSC===v3.p6){if(!v16){v16=[];}v16[v17++]=SP;v16[v17++]=ARGS;v16[v17++]=PC;v16[v17++]=v18;v16[v17++]=v19;v16[v17++]=SC;for(let v20=0;v20<v21;v20++){v16[v17++]=R[v20];}ARGS=v9;v18=null;if(v5[v13[0]*15+v13[1]&31]){v19=null;let v22=v5[32]||0;for(let v23=0;v23<v22&&v23<v9.length;v23++){R[v23]=v9[v23];}for(let v24=v9.length<v22?v9.length:v22;v24<v21;v24++){R[v24]=undefined;}PC=v15;}else{v19=H_sliceArgs(v9);for(let v25=0;v25<v21;v25++){R[v25]=undefined;}PC=0;}break L0;}if(NS.p7){NS.p7=false;}else{NS.p1=undefined;}S[SP++]=v26(v5,undefined,v9,v1,v3.p6,undefined);PC++;break L0;}}let v27=NS.p1;let v28=NS.p0;let v29=v28&&WeakMap_prototype_get.call(v28,v1);if(v29){NS.p7=true;NS.p1=v29;}else{NS.p1=undefined;}let v30;try{if(0===v0){v30=v1();}else if(1===v0){let v31=S[--SP];v30=v31&&\"object\"===typeof v31&&WeakSet_prototype_has.call(v11,v31)?Reflect_apply(v1,undefined,v31.value):v1(v31);}else{v30=Reflect_apply(v1,undefined,H_popArgs(v12,v0));}S[SP++]=v30;}finally{if(v29){NS.p7=false;}NS.p1=v27;}PC++;}": {
+   "mnemonic": "CALL"
+  }
+ },
+ "conflicts": []
+}

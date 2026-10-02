@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liftoff · obfuscator.io VM Decompiler</title>
+<meta name="description" content="Turns JavaScript protected with obfuscator.io's Virtualization (VM) option back into readable JavaScript. Runs entirely in your browser.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>Liftoff <span class="sub">decompiler for obfuscator.io's VM</span></h1>
+    <p class="lead">Liftoff turns JavaScript protected with the <em>Virtualization</em> option of
+      obfuscator.io back into readable JavaScript. Files without a VM are deobfuscated with
+      webcrack instead. Everything runs in your browser; the file is never uploaded.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panes">
+    <div class="pane">
+      <div class="pane-head">
+        <h2>Obfuscated input</h2>
+        <div class="actions">
+          <label class="btn ghost" for="file">Open file…</label>
+          <input id="file" type="file" accept=".js,.mjs,.cjs,.txt,text/javascript" hidden>
+          <button class="btn ghost" id="sample" type="button">Load example</button>
+        </div>
+      </div>
+      <textarea id="input" spellcheck="false" placeholder="Paste a virtualized build here, or drop a .js file onto this box."></textarea>
+      <div class="pane-foot">
+        <span id="inputInfo" class="muted">No input yet.</span>
+        <label class="check"><input type="checkbox" id="skipWebcrack"> skip webcrack normalization</label>
+      </div>
+    </div>
+
+    <div class="pane">
+      <div class="pane-head">
+        <h2>Decompiled output</h2>
+        <div class="actions">
+          <button class="btn ghost" id="copy" type="button" disabled>Copy</button>
+          <button class="btn ghost" id="download" type="button" disabled>Download</button>
+        </div>
+      </div>
+      <pre id="output" class="code" tabindex="0"><span class="muted">The readable program appears here.</span></pre>
+      <div class="pane-foot">
+        <span id="outputInfo" class="muted"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="run">
+    <button class="btn primary" id="go" type="button" disabled>Decompile</button>
+    <button class="btn" id="cancel" type="button" hidden>Cancel</button>
+    <span id="status" class="muted" role="status" aria-live="polite"></span>
+  </section>
+
+  <section class="recovery" id="recovery" hidden>
+    <div class="meter" aria-hidden="true"><div class="bar" id="recoveryBar"></div></div>
+    <div><strong id="recoveryText"></strong> <span class="muted" id="recoveryDetail"></span></div>
+  </section>
+
+  <details class="log" id="logBox">
+    <summary>Log</summary>
+    <pre id="log"></pre>
+  </details>
+
+  <section class="about">
+    <h2>How it works</h2>
+    <ol>
+      <li><strong>Normalize</strong> the file with <a href="https://github.com/j4k0xb/webcrack">webcrack</a>
+        (string arrays, wrappers, formatting).</li>
+      <li><strong>Locate the interpreter</strong> by its shape and infer the role of each array
+        (operand stack, registers, bytecode).</li>
+      <li><strong>Map every handler</strong> to an instruction with about 130 rules; an unknown
+        handler is explained by running one dispatch step instead of guessing.</li>
+      <li><strong>Load the bytecode</strong> with the build's own loader.</li>
+      <li><strong>Lift</strong> the bytecode with a symbolic operand stack and put the recovered
+        functions back where they were called.</li>
+    </ol>
+    <p>The page reports how much of the bytecode came back as real code. An instruction counts as
+      not recovered when its opcode could not be identified or when it had to be emitted as a
+      placeholder call such as <code>__UNKNOWN_12(...)</code>. A file without an obfuscator.io
+      virtual machine is passed through webcrack only, which undoes string arrays, control-flow
+      flattening and similar transformations where it recognises them.</p>
+    <p>Nothing about a build is hard-coded: opcode numbers, byte format, alphabet and dispatcher
+      are inferred from each file. The decompiler was tested on 136 builds, including 120 builds of
+      programs of up to 900 lines under eight option sets, and every decompiled program prints the
+      same output as its obfuscated build.</p>
+    <h2>Supported versions</h2>
+    <p>Written and tested for the VM mode of obfuscator.io's hosted service, using builds made
+      with the <strong>free tier</strong> of the dashboard:</p>
+    <ul>
+      <li>16 builds from July 2026, made with the earlier code generator;</li>
+      <li>120 builds made on 29 September 2026 with <strong>version 8.0.6</strong> and the
+        <em>VM Low</em> preset, alone and combined with string arrays, control-flow flattening,
+        expression obfuscation, raw output and the Node target.</li>
+    </ul>
+    <p>The separate hardening options of the virtual machine (for example encoded jumps,
+      stateful opcodes or a split dispatcher) were not part of these builds and are untested.
+      Later versions of the obfuscator may change the instruction set; unknown handlers are then
+      reported instead of guessed, and the recovery figure drops below 100&nbsp;%.</p>
+    <p class="note"><strong>Scope and limits.</strong> The result is a readable program that
+      behaves like the original, not the original source: local names, comments and the choice
+      between equivalent forms are lost in compilation. Only obfuscator.io's VM mode is supported.
+      To read the bytecode, the decompiler runs the file's own loader code inside a Web Worker of
+      this page, with network and DOM globals hidden. This is not a security sandbox; only decompile
+      files you are willing to run.</p>
+  </section>
+</main>
+
+<footer class="wrap foot muted">
+  Made by <a href="https://github.com/bruhlex">bruhlex</a>. Command-line version and source: see the repository README. MIT licence.
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

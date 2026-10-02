@@ -1,0 +1,6 @@
+node_modules/
+test/web/.shim-bundle.cjs
+docs/_t/
+docs/_ref.txt
+docs/selftest.html
+.DS_Store

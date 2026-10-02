@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>selftest</title><pre id="out">running</pre>
+<script>
+(async () => {
+  const src = await (await fetch('samples/example.js')).text();
+  const w = new Worker('decompiler.worker.js');
+  const t0 = performance.now();
+  w.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'done') document.getElementById('out').textContent = 'DONE ' + Math.round(performance.now() - t0) + 'ms\n' + m.code;
+    if (m.type === 'error') document.getElementById('out').textContent = 'ERROR ' + m.text;
+  };
+  w.postMessage({ source: src, name: 'example.js' });
+})();
+</script>

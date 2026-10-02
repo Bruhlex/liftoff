@@ -1,0 +1,8 @@
+{
+  "a06_spread_this.js": {
+    "6": "fn.name of an arrow function and of an anonymous function expression: the VM names such closures after its internal wrapper functions ('vjRMKk', 'dX'); natively they are named after their binding or ''. The decompiled program has native semantics."
+  },
+  "n01_rest_api.js": {
+    "64": "TypeError message for calling a non-function: the VM's CALL handler throws its own generic 'undefined is not a function'; native code names the expression ('r0.json.join is not a function'). Not reproducible in source form."
+  }
+}

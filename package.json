@@ -1,0 +1,32 @@
+{
+  "name": "liftoff-decompiler",
+  "version": "0.1.0",
+  "description": "Liftoff: decompiler for JavaScript protected with the Virtualization (VM) option of obfuscator.io",
+  "main": "index.js",
+  "bin": {
+    "liftoff": "./index.js"
+  },
+  "author": "bruhlex (https://github.com/bruhlex)",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "@babel/generator": "^7.26.0",
+    "@babel/parser": "^7.26.0",
+    "@babel/traverse": "^7.26.0",
+    "@babel/types": "^7.26.0",
+    "webcrack": "^2.15.1"
+  },
+  "scripts": {
+    "test": "node test/synthetic.test.js && node test/samples.test.js",
+    "test:unit": "node test/synthetic.test.js",
+    "test:samples": "node test/samples.test.js",
+    "build": "node build.mjs",
+    "serve": "node build.mjs && python3 -m http.server 8000 --directory docs",
+    "test:corpus": "node test/corpus.js",
+    "test:web": "node test/web/run.mjs && node test/web/.shim-bundle.cjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "path-browserify": "^1.0.1"
+  }
+}
