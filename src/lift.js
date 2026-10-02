@@ -1095,6 +1095,19 @@ class Lifter {
       const condInfo = this.condFromJump(state, lastM, instrs[L][1], body.stack);
       let test = condInfo.cond;
       if (!condInfo.jumpWhenTrue) test = this.negate(test);
+      // the test is outside the body's block: variables it reads that the body declares at its
+      // top level are declared in front of the loop and only assigned inside
+      const testNames = new Set();
+      t.traverseFast(test, (n) => { if (t.isIdentifier(n)) testNames.add(n.name); });
+      const hoisted = [];
+      body.stmts = body.stmts.map((st) => {
+        if (!t.isVariableDeclaration(st) || st.kind === 'var' || !st.declarations.every((d) => t.isIdentifier(d.id))) return st;
+        if (!st.declarations.some((d) => testNames.has(d.id.name))) return st;
+        for (const d of st.declarations) hoisted.push(t.variableDeclarator(t.identifier(d.id.name)));
+        const inits = st.declarations.filter((d) => d.init).map((d) => t.assignmentExpression('=', t.identifier(d.id.name), d.init));
+        return inits.length ? t.expressionStatement(inits.length === 1 ? inits[0] : t.sequenceExpression(inits)) : t.emptyStatement();
+      }).filter((st) => !t.isEmptyStatement(st));
+      if (hoisted.length) emit(t.variableDeclaration('let', hoisted));
       emit(this.labelled(loopRec, t.doWhileStatement(test, t.blockStatement(body.stmts))));
       return { stack, next: exitDefault };
     }
@@ -1402,7 +1415,7 @@ class Lifter {
         return { stack: fallStack, next: pc + 1 };
       }
       if (js === 'end') return { stack: fallStack, next: pc + 1 };
-      emit(t.ifStatement(test, t.blockStatement([this.comment(`jump to ${T}`)])));
+      emit(t.ifStatement(test, t.blockStatement([this.comment(`unresolved jump to ${T}`)])));
       return { stack: fallStack, next: pc + 1 };
     }
 
@@ -1588,6 +1601,17 @@ class Lifter {
         const tg = jumps[lastPc];
         if (tg > lastPc && tg <= end && (swEnd === end || tg === swEnd)) swEnd = tg;
       }
+    }
+    // a switch without `default` jumps to the code behind it when no case matches; when a case
+    // body breaks to that point (a jump that is not just the skip over a nested `else`), it is the
+    // switch end and not a default body
+    if (swEnd === end && defaultTarget === targets[targets.length - 1] && !tests.some((x) => x.target === defaultTarget)) {
+      const breaks = Object.entries(jumps).some(([f, to]) => {
+        const fn = Number(f);
+        return to === defaultTarget && fn >= bodiesStart && fn < defaultTarget - 1 && UNCOND_JUMP.has(this.mnem(instrs[fn][0])) &&
+          !Object.entries(jumps).some(([h, hto]) => hto === fn + 1 && NUM_JUMP.has(this.mnem(instrs[Number(h)][0])));
+      });
+      if (breaks) { swEnd = defaultTarget; targets.pop(); }
     }
     // discriminant: all tests `X === Y` with identical X
     const { gen } = require('./locate');
