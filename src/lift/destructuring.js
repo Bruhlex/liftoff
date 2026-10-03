@@ -9,7 +9,7 @@ const { countIdent, referencesName, isUndef } = require('../ast');
 const { tryBodyEnd, isBookkeepingStore, fresh } = require('./nodes');
 
 module.exports = {
-// -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // array destructuring:  [a, , b = 1, [c, d]] = src
   //
   //   src GET_ITERATOR; STORE_REG it; PUSH false; STORE_REG done;

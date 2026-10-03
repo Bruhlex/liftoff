@@ -10,7 +10,7 @@ const { referencesName, countIdentity, replaceIdentity } = require('../ast');
 const { isPseudo, isPure, assignedNames, assignedProps, readsProps, containsCall, fresh } = require('./nodes');
 
 module.exports = {
-// -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // stack helpers
   // -------------------------------------------------------------------------
 
@@ -43,7 +43,7 @@ popLit(stack) {
     return 0;
   },
 
-/** Emit an impure value that is about to be discarded. */
+  /** Emit an impure value that is about to be discarded. */
   dropValue(v, emit) {
     // reading an undeclared global throws, so a dropped read of an unknown global is kept
     // (standard built-ins such as `console` are known to exist)
@@ -52,7 +52,7 @@ popLit(stack) {
     emit(t.expressionStatement(v));
   },
 
-/**
+  /**
    * Before emitting a statement `stmt` while values are pending on the stack,
    * spill pending values that the statement could affect into temporaries.
    */
@@ -125,7 +125,7 @@ popLit(stack) {
 
 tmpName() { return fresh(`_t${this.tempCounter++}`); },
 
-/** literals under construction keep their node, but values already evaluated into them
+  /** literals under construction keep their node, but values already evaluated into them
    *  (calls etc.) precede any statement emitted now: move those into temporaries */
   spillBuilder(b, emit, assigned = null, props = null) {
     // a pure value (e.g. a variable read) is affected only by a statement that writes what it reads
@@ -152,7 +152,7 @@ tmpName() { return fresh(`_t${this.tempCounter++}`); },
     }
   },
 
-/**
+  /**
    * A branch that emits a statement spills pending values of the stack it inherited
    * (`const _tN = <value>`); those values were computed before the branch, so the spill
    * belongs in front of the conditional. Both branches may have spilled the same value.
@@ -208,7 +208,7 @@ emitStatement(state, stack, emit, stmt) {
     emit(stmt);
   },
 
-/**
+  /**
    * A value with side effects (call, await, new, assignment, ...) that was
    * duplicated on the stack (DUP) must be evaluated once. If such a node occurs
    * in the code about to be emitted and is still referenced from the stack (or
@@ -242,7 +242,7 @@ emitStatement(state, stack, emit, stmt) {
     }
   },
 
-/** Assignment: value `v` has just been popped for storing into `target`. */
+  /** Assignment: value `v` has just been popped for storing into `target`. */
   assign(state, stack, emit, target, v, declKind = null) {
     const idx = stack.lastIndexOf(v);
     if (idx >= 0 && !t.isLiteral(v)) {
@@ -274,7 +274,7 @@ emitStatement(state, stack, emit, stmt) {
     this.emitStatement(state, stack, emit, t.expressionStatement(t.assignmentExpression('=', target, v)));
   },
 
-/** push the result of a property store; when the stored value is still on top of the stack
+  /** push the result of a property store; when the stored value is still on top of the stack
    *  (`DUP; ...; SETPROP; DROP`, an assignment used as a value: `f(++o[k])`), the assignment
    *  takes that value's place, so it is not split into a temporary and a statement */
   pushStore(state, stack, asg) {
@@ -287,7 +287,7 @@ emitStatement(state, stack, emit, stmt) {
     stack.push(asg);
   },
 
-/** a probe lifts code only to look at it; the returned function undoes what that lifting
+  /** a probe lifts code only to look at it; the returned function undoes what that lifting
    *  recorded: declared slots (a `const` in a probed loop header), and unless `declaredOnly`, the
    *  temp-register values and hidden registers */
   snapshot(state) {

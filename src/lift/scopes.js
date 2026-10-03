@@ -26,7 +26,7 @@ class Frame {
 }
 
 module.exports = { Frame, methods: {
-/**
+  /**
    * Block-scope nesting per instruction, computed by propagating along the
    * control-flow graph (ENTER_SCOPE pushes, EXIT_SCOPE pops, try handlers start
    * with the scope active at TRY_ENTER). Linear tracking during lifting is wrong
@@ -52,7 +52,7 @@ module.exports = { Frame, methods: {
     state.scopeStacks = stacks;
   },
 
-/**
+  /**
    * Slots of a scope that are declared (DECLARE_TDZ) but never initialized in it, such as the
    * copy of `x` in the head of `for (let x of expr)` that `expr` sees: every access throws.
    */
@@ -90,7 +90,7 @@ frameForEnter(state, enterPc) {
     return state.enterFrames.get(enterPc);
   },
 
-/** Scope chain (outermost first) that is active at the instruction being lifted. */
+  /** Scope chain (outermost first) that is active at the instruction being lifted. */
   chainAt(state) {
     const st = state.scopeStacks && state.scopeStacks[state.curPc];
     if (!st) return state.chain;
@@ -102,7 +102,7 @@ currentFrame(state) {
     return c[c.length - 1];
   },
 
-/**
+  /**
    * Variable names from DECLARE_TDZ, assigned before lifting: hoisted function declarations
    * are created (and lifted) at scope entry, before the declarations of the variables they
    * close over.
@@ -178,7 +178,7 @@ currentFrame(state) {
     state.curPc = 0;
   },
 
-// -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // scope variables
   // -------------------------------------------------------------------------
 

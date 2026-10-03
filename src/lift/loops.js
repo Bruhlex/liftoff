@@ -9,7 +9,7 @@ const { identifiersIn, negate, exprStmts } = require('../ast');
 const { NUM_JUMP, takeLoopBinding, updateExpressions, drainImpure, UNCOND_JUMP } = require('./nodes');
 
 module.exports = {
-/**
+  /**
    * `for (let i = ...; cond; update)` whose variables are captured by closures lives in scope
    * slots, and the compiler implements the per-iteration bindings literally:
    *
@@ -84,7 +84,7 @@ computeLoopEnds(state) {
     state.loopEnds = loopEnds;
   },
 
-// -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // loops
   // -------------------------------------------------------------------------
 

@@ -10,7 +10,7 @@ const { referencesName, containsNode } = require('../ast');
 const { NUM_JUMP, templateField, tryBodyEnd, isPseudo, templateRegEffects, UNCOND_JUMP, isPure, fresh } = require('./nodes');
 
 module.exports = {
-/**
+  /**
    * Registers 0..paramCount-1 start as copies of the arguments, but the VM keeps
    * the arguments array separately (LOAD_ARG / STORE_ARG). When a program both
    * overwrites a parameter register and accesses the same argument slot, the two
@@ -40,7 +40,7 @@ regName(state, r) {
     return state.regNames.get(r);
   },
 
-/** the register a lifted name stands for (registers are named `rN` by regName), or undefined */
+  /** the register a lifted name stands for (registers are named `rN` by regName), or undefined */
   regOfName(state, name) {
     for (const [r, n] of state.regNames) if (n === name) return r;
     return undefined;
@@ -51,7 +51,7 @@ regId(state, r) {
     return t.identifier(this.regName(state, r));
   },
 
-/**
+  /**
    * A read of variable `name` while an unflushed `(name = v)` expression is still
    * on the stack would observe the old value in the emitted code (JS evaluates
    * operands left to right). Emit such assignments as statements first.
@@ -96,7 +96,7 @@ regId(state, r) {
     }
   },
 
-/**
+  /**
    * Registers with exactly one STORE_REG site that precedes every LOAD of the
    * register are compiler temporaries (e.g. the callee copied before argument
    * evaluation). When the stored value is a simple, side-effect-free
@@ -169,7 +169,7 @@ regId(state, r) {
     state.tempValues = new Map();
   },
 
-/** May the value stored into temp register r be substituted at its loads? */
+  /** May the value stored into temp register r be substituted at its loads? */
   isSimpleValue(v, win = null) {
     if (!v || v.__marker || v.__builder || v.__noTemp) return false;
     // a regex literal creates a new object (with its own lastIndex) on every evaluation
@@ -187,7 +187,7 @@ regId(state, r) {
     return false;
   },
 
-/** is register r written again after the current instruction before it is read (straight line)? */
+  /** is register r written again after the current instruction before it is read (straight line)? */
   storedAgainBeforeRead(state, r) {
     for (let q = state.curPc + 1; q < state.instrs.length; q++) {
       const [op, operand] = state.instrs[q];

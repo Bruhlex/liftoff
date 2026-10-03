@@ -42,7 +42,7 @@ const { Frame } = require('./scopes');
 
 
 class Lifter {
-/**
+  /**
    * @param {object} ctx { table, programsById, nestedIndexToId, log, warn }
    */
   constructor(ctx) {
@@ -54,7 +54,7 @@ class Lifter {
     this.globalVarDecls = new Set();
   }
 
-/** the mnemonic of instruction q of a program (`instrs`), null outside it */
+  /** the mnemonic of instruction q of a program (`instrs`), null outside it */
   mnemAt(instrs, q) {
     return q >= 0 && q < instrs.length ? this.mnem(instrs[q][0]) : null;
   }
@@ -68,7 +68,7 @@ entry(op) {
     return this.ctx.table.get(op) || { mnemonic: `UNKNOWN_${op}` };
   }
 
-/**
+  /**
    * Lift a program to a function-like description.
    * @returns {{ params: Node[], body: Statement[], usesArguments: boolean, paramCount?: number }}
    */
@@ -148,7 +148,7 @@ dropIterInit(state, reg) {
     if (st) { st.__remove = true; state.iterInit.delete(reg); }
   }
 
-/** Drop `rN = <literal>` statements for registers that only carried loop bookkeeping. */
+  /** Drop `rN = <literal>` statements for registers that only carried loop bookkeeping. */
   removeHiddenRegStores(state, stmts) {
     const names = new Set([...state.hiddenRegs].map((r) => this.regName(state, r)));
     const isHiddenStore = (s) => isBookkeepingStore(s, names);
@@ -171,7 +171,7 @@ dropIterInit(state, reg) {
     }
   }
 
-/** A readable name that is not yet used in this program (item, item2, ...). */
+  /** A readable name that is not yet used in this program (item, item2, ...). */
   freshName(state, base) {
     state.usedNames = state.usedNames || new Set([...state.paramNames]);
     let name = base, i = 1;
@@ -180,7 +180,7 @@ dropIterInit(state, reg) {
     return name;
   }
 
-// -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // region walker
   // -------------------------------------------------------------------------
 

@@ -22,7 +22,7 @@ module.exports = {
     return inner.stack;
   },
 
-/** first pc at or after `from` that a jump or exception handler can reach (dead code after an
+  /** first pc at or after `from` that a jump or exception handler can reach (dead code after an
    *  unconditional jump, e.g. `continue\nFOR1;`, is skipped) */
   nextReachable(state, from, end) {
     if (!state.reachTargets) {
@@ -34,13 +34,13 @@ module.exports = {
     return q;
   },
 
-/** pc after a run of EXIT_SCOPE instructions (a `break` may target either end of the run) */
+  /** pc after a run of EXIT_SCOPE instructions (a `break` may target either end of the run) */
   skipScopeExits(state, pc) {
     while (pc < state.instrs.length && this.mnem(state.instrs[pc][0]) === 'EXIT_SCOPE') pc++;
     return pc;
   },
 
-/**
+  /**
    * Target of a jump inside the loop [H, L] that leaves the loop for a point behind code that follows
    * it (and that no enclosing loop / switch / block resolves): the end of a labeled block, else null.
    */
@@ -69,7 +69,7 @@ module.exports = {
     return best;
   },
 
-/**
+  /**
    * Target of a `break label` out of the conditional at `pc`, or null: an unconditional forward
    * jump inside the conditional that lies within a nested region ending before its target (so
    * falling through cannot reach the target), and that no enclosing loop, switch or block resolves.
@@ -101,7 +101,7 @@ module.exports = {
     return best;
   },
 
-/** Statement for a jump to `tgt` from inside a region ending at `end`, or null. */
+  /** Statement for a jump to `tgt` from inside a region ending at `end`, or null. */
   jumpStatement(state, tgt, end) {
     for (let i = state.blocks.length - 1; i >= 0; i--) {
       if (state.blocks[i].target === tgt) { state.blocks[i].used = true; return t.breakStatement(t.identifier(state.blocks[i].label)); }
