@@ -71,6 +71,12 @@ function containsNode(root, pred, skip = null) {
   return walk(root);
 }
 
+/** error texts of the private-member lowering: any of its checks (`Cannot read private field`, ...) */
+const PRIVATE_ERROR = /private (member|method|field)/;
+/** the text of a brand check proper, which reads a member or calls a method; installing the brand
+ *  of a #method (`Cannot install private method`) is a different helper */
+const isBrandCheckMessage = (s) => /private (member|method)/.test(s) && !/install private/.test(s);
+
 /** the names of all identifiers below `root` */
 function identifiersIn(root) {
   const names = new Set();
@@ -100,9 +106,17 @@ const thunkValue = (stmts) => (stmts.length === 1 && t.isReturnStatement(stmts[0
 /** the expressions of a statement list made only of expression statements, else null */
 const exprStmts = (stmts) => (stmts.every((s) => t.isExpressionStatement(s)) ? stmts.map((s) => s.expression) : null);
 
+/** the declarator of `let|const x = init` (one identifier; `var` too unless `notVar`) or null */
+const singleDeclarator = (st, { requireInit = true, notVar = false } = {}) =>
+  (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && (!notVar || st.kind !== 'var') &&
+    (!requireInit || st.declarations[0].init) ? st.declarations[0] : null);
+
+/** the assignment of an `x = v;` statement (operator `=`), or null */
+const plainAssign = (st) => (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) ? st.expression : null);
+
 /** remove a variable declarator, and its declaration when it was the only one */
 function removeDeclarator(p) {
   if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
 }
 
-module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts };
+module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign };

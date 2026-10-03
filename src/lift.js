@@ -35,7 +35,7 @@
  *   __methodKind, __stmtsMark: bookkeeping of single idioms, see where they are set
  */
 const t = require('@babel/types');
-const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, staticKey, iife, thunkValue, exprStmts } = require('./ast');
+const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
@@ -3132,8 +3132,7 @@ class Lifter {
    */
   isBrandCheckProgram(prog) {
     if (prog.__brand !== undefined) return prog.__brand;
-    const re = /private (member|method|field)/;
-    const hasMsg = (p) => p && p.consts.some((c) => c && c.t === 'string' && re.test(c.v));
+    const hasMsg = (p) => p && p.consts.some((c) => c && c.t === 'string' && PRIVATE_ERROR.test(c.v));
     let brand = prog.paramCount === 1 && hasMsg(prog);
     if (!brand && prog.paramCount === 1) {
       // `o => SYM in o ? o : { get [SYM]() { throw ... } }`: the message sits in nested programs

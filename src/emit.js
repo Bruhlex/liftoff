@@ -20,7 +20,7 @@ const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
 const { Lifter, Frame } = require('./lift');
-const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts } = require('./ast');
+const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign } = require('./ast');
 
 // output: comments kept, strings with minimal escaping
 const GEN_OPTS = { comments: true, compact: false, jsescOption: { minimal: true } };
@@ -31,18 +31,11 @@ const COMPOUND_OPS = new Set(['+', '-', '*', '/', '%', '**', '<<', '>>', '>>>', 
 // host analysis
 // ---------------------------------------------------------------------------
 
-function factoryStatementIndex(vm) {
+/** the top-level statement of the host program that contains the VM factory */
+function factoryTopStatement(vm) {
   let top = vm.factoryPath;
   while (top.parentPath && !top.parentPath.isProgram()) top = top.parentPath;
-  return vm.ast.program.body.indexOf(top.node);
-}
-
-function factoryVarName(vm) {
-  let top = vm.factoryPath;
-  while (top.parentPath && !top.parentPath.isProgram()) top = top.parentPath;
-  const st = top.node;
-  if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id)) return st.declarations[0].id.name;
-  return null;
+  return top.node;
 }
 
 /** Map the arguments of one entry call to roles by shape. */
@@ -114,8 +107,10 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   const lifter = new Lifter({ table, programsById, nestedIndexToId: ex.nestedIndexToId, log, warn, reserved });
 
   const program = vm.ast.program;
-  const facIdx = factoryStatementIndex(vm);
-  const entryName = factoryVarName(vm) || ex.entryName;
+  const facTop = factoryTopStatement(vm);
+  const facIdx = vm.ast.program.body.indexOf(facTop);
+  const facDecl = t.isVariableDeclaration(facTop) && facTop.declarations.length === 1 && t.isIdentifier(facTop.declarations[0].id) ? facTop.declarations[0].id.name : null;
+  const entryName = facDecl || ex.entryName;
   const nsName = vm.nsName;
   const globalName = vm.globalName;
 
@@ -403,7 +398,7 @@ function hasEffects(node) {
  *  of a #method brand ("Cannot install private ...") is a different helper */
 const isBrandCheckFn = (n) => t.isFunction(n) && n.params.length === 1 &&
   // (the message of a class nested in some other function, e.g. a field initializer, does not count)
-  containsNode(n.body, (x) => t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value), (x) => t.isClass(x));
+  containsNode(n.body, (x) => t.isStringLiteral(x) && isBrandCheckMessage(x.value), (x) => t.isClass(x));
 
 /** number of `let x;` declarations without initializer at the start of a body */
 function leadingBareLets(body) {
@@ -424,6 +419,13 @@ function readsBodyBinding(fnPath, expr, own = []) {
   return hit;
 }
 
+/** k for `if (arguments[k] === undefined) ...`, the VM's default check of parameter k; else -1 */
+function argDefaultIndex(st) {
+  if (!t.isIfStatement(st) || !t.isBinaryExpression(st.test, { operator: '===' }) || !t.isIdentifier(st.test.right, { name: 'undefined' })) return -1;
+  const m = st.test.left;
+  return t.isMemberExpression(m) && m.computed && t.isIdentifier(m.object, { name: 'arguments' }) && t.isNumericLiteral(m.property) ? m.property.value : -1;
+}
+
 /**
  * A parameter with a default does not count in the function's `length`, so the VM program has
  * fewer parameters than the source and reads the rest as `arguments[i]`:
@@ -437,16 +439,14 @@ function argumentsToParams(path) {
   const P = n.params.length;
   const uses = [];
   let other = false;
-  // the default values themselves (`arguments[i] = X` of the leading default checks): an
-  // `arguments[k]` read in X reads the arguments object, not the later parameter k
   // in the VM a parameter beyond `length` and `arguments[k]` are the same storage: in the default
   // value of parameter j, `arguments[k]` with k < j is the earlier parameter k (already set,
   // possibly by its own default), with k >= j a later one, which only the arguments object holds yet
   const defaultValues = new Map(); // default value node -> index of the parameter it initializes
   for (const st of n.body.body.slice(leadingBareLets(n.body.body))) {
-    if (!t.isIfStatement(st) || !t.isBinaryExpression(st.test, { operator: '===' }) || !t.isMemberExpression(st.test.left) || !t.isIdentifier(st.test.left.object, { name: 'arguments' }) ||
-        !t.isNumericLiteral(st.test.left.property)) break;
-    t.traverseFast(st.consequent, (x) => { if (t.isAssignmentExpression(x)) defaultValues.set(x.right, st.test.left.property.value); });
+    const k = argDefaultIndex(st);
+    if (k < 0) break;
+    t.traverseFast(st.consequent, (x) => { if (t.isAssignmentExpression(x)) defaultValues.set(x.right, k); });
   }
   let inDefault = null;
   const visit = (node, parent) => {
@@ -475,9 +475,7 @@ function argumentsToParams(path) {
   if (other || !uses.length) return;
   // the first missing parameter must get a default, or the `length` would grow
   const first = n.body.body[leadingBareLets(n.body.body)];
-  const isDefaultOf = (st, i) => t.isIfStatement(st) && t.isBinaryExpression(st.test, { operator: '===' }) && t.isMemberExpression(st.test.left) &&
-    t.isIdentifier(st.test.left.object, { name: 'arguments' }) && t.isNumericLiteral(st.test.left.property, { value: i }) && t.isIdentifier(st.test.right, { name: 'undefined' });
-  if (!isDefaultOf(first, P)) return;
+  if (argDefaultIndex(first) !== P) return;
   const max = Math.max(...uses.map((u) => u.property.value));
   const names = n.params.map((p) => p.name);
   for (let i = P; i <= max; i++) {
@@ -548,8 +546,8 @@ function readObjectPattern(body, i, src, ctx) {
     }
     return null;
   };
-  const decl1 = (st) => (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) ? st.declarations[0] : null);
-  const assign = (st) => (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) ? st.expression : null);
+  const decl1 = (st) => singleDeclarator(st, { requireInit: false });
+  const assign = plainAssign;
   const props = [];
   for (; i < body.length; i++) {
     const st = body[i], nx = body[i + 1];
@@ -953,7 +951,7 @@ function restorePrivateMembers(file, privateSymbols) {
       }
       // immediately invoked brand check: (o => SYM in o ? o : {...throws...})(x) / (function (o) {...})(x) -> x
       if (t.isFunction(p.node.callee) && p.node.arguments.length === 1 && p.node.callee.params.length === 1) {
-        if (containsNode(p.node.callee, (x) => t.isStringLiteral(x) && /private (member|method|field)/.test(x.value))) { p.replaceWith(p.node.arguments[0]); return; }
+        if (containsNode(p.node.callee, (x) => t.isStringLiteral(x) && PRIVATE_ERROR.test(x.value))) { p.replaceWith(p.node.arguments[0]); return; }
       }
       // rN(obj) -> obj   (only calls of that very helper binding, names are reused across functions)
       if (t.isIdentifier(p.node.callee) && p.node.arguments.length === 1) {
@@ -1081,26 +1079,26 @@ const assignsOwnName = (fn) => !!fn.id && containsNode(fn, (x) =>
  * Written as statements, `key()`'s `toString` would run only at the read, after `obj()`.
  */
 function restoreKeyedDestructuring(body) {
-  const decl1 = (st) => (t.isVariableDeclaration(st) && st.kind !== 'var' && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && st.declarations[0].init ? st.declarations[0] : null);
+  const decl1 = (st) => singleDeclarator(st, { notVar: true });
   for (let i = 1; i < body.length; i++) {
     const kd = decl1(body[i]), sd = decl1(body[i - 1]);
     if (!kd || !kd.init.__propertyKey || !sd) continue;
     // temporaries of the target, then `T = s[k]`
     let j = i + 1;
     const temps = new Map();
-    while (j < body.length && decl1(body[j])) { temps.set(decl1(body[j]).id.name, decl1(body[j]).init); j++; }
+    for (let d; j < body.length && (d = decl1(body[j])); j++) temps.set(d.id.name, d.init);
     const fin = body[j];
-    const a = fin && t.isExpressionStatement(fin) && t.isAssignmentExpression(fin.expression, { operator: '=' }) ? fin.expression : null;
+    const a = fin && plainAssign(fin);
     if (!a || !t.isMemberExpression(a.right) || !a.right.computed || !t.isIdentifier(a.right.object, { name: sd.id.name }) || !t.isIdentifier(a.right.property, { name: kd.id.name })) continue;
     const rest = body.slice(j + 1);
     const names = [sd.id.name, kd.id.name, ...temps.keys()];
     if (names.some((n) => rest.some((x) => referencesName(x, n)) || countRefs(fin, n) !== 1)) continue;
     // the target with its temporaries put back in place
-    let target = t.cloneNode(a.left, true);
+    if (t.isIdentifier(a.left) && temps.has(a.left.name)) continue;
+    const target = t.cloneNode(a.left, true);
     t.traverseFast(target, (x) => {
       for (const key of ['object', 'property']) if (t.isIdentifier(x[key]) && temps.has(x[key].name)) x[key] = temps.get(x[key].name);
     });
-    if (t.isIdentifier(target) && temps.has(target.name)) continue;
     const pattern = t.objectPattern([t.objectProperty(kd.init, target, true)]);
     body.splice(i - 1, j - i + 2, t.expressionStatement(t.assignmentExpression('=', pattern, sd.init)));
   }
