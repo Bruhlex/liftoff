@@ -29,6 +29,33 @@ const templateField = (f, operand) => (f === 'op' ? operand : f === 'lo' ? opera
 /** first pc of a try statement's handlers (catch, finally, else the end): where its body ends */
 const tryBodyEnd = (tr, fallback = Infinity) => (tr[0] !== null ? tr[0] : tr[1] !== null ? tr[1] : tr[2] !== null ? tr[2] : fallback);
 
+/** does a statement list end in return / throw / break / continue? */
+const endsWithJump = (stmts) => stmts.length > 0 && ['ReturnStatement', 'ThrowStatement', 'BreakStatement', 'ContinueStatement'].includes(stmts[stmts.length - 1].type);
+
+/**
+ * The loop variable of a for..of / for..in: a first body statement `let x = v` / `x = v` that takes
+ * the iteration value `v` (an identifier not used elsewhere) becomes the loop's left side and is
+ * removed from the body; otherwise `const v`.
+ */
+function takeLoopBinding(bodyStmts, valueId) {
+  const first = bodyStmts[0];
+  if (first && !bodyStmts.slice(1).some((x) => referencesName(x, valueId.name))) {
+    if (t.isVariableDeclaration(first) && first.declarations.length === 1 && t.isIdentifier(first.declarations[0].init, { name: valueId.name })) {
+      bodyStmts.shift();
+      return t.variableDeclaration(first.kind, [t.variableDeclarator(first.declarations[0].id)]);
+    }
+    if (t.isExpressionStatement(first) && t.isAssignmentExpression(first.expression, { operator: '=' }) && t.isIdentifier(first.expression.right, { name: valueId.name })) {
+      bodyStmts.shift();
+      return first.expression.left;
+    }
+  }
+  return t.variableDeclaration('const', [t.variableDeclarator(valueId)]);
+}
+
+/** the expressions of a lifted loop update range; null entries mark statements that are not
+ *  expressions (the update then cannot be a `for` clause) */
+const updateExpressions = (upd) => [...upd.stmts.map((x) => (t.isExpressionStatement(x) ? x.expression : null)), ...upd.stack.filter((v) => !isPure(v))];
+
 /** values left on a lifted range's stack that have effects become statements */
 function drainImpure(res) {
   for (const v of res.stack) if (!isPure(v)) res.stmts.push(t.expressionStatement(v));
@@ -326,7 +353,7 @@ class Lifter {
 
   /**
    * Lift a program to a function-like description.
-   * @returns {{ params: Node[], body: Statement[], usesArguments: boolean, kind }}
+   * @returns {{ params: Node[], body: Statement[], usesArguments: boolean, paramCount?: number }}
    */
   liftProgram(prog, opts = {}) {
     const { parentChain = [], paramNames = null, isTopLevel = false } = opts;
@@ -821,13 +848,7 @@ class Lifter {
       if (loopEnd !== undefined && loopEnd < end && loopEnd >= pc && !state.blockDone.has(pc)) {
         const esc = this.escapeTarget(state, pc, loopEnd, end);
         if (esc !== null) {
-          state.blockDone.add(pc);
-          const label = `L${++state.labelCounter}`;
-          state.blocks.push({ target: esc, label, used: false });
-          const inner = this.liftRange(state, pc, esc, stack);
-          const blk = state.blocks.pop();
-          stack = inner.stack;
-          emit(blk.used ? t.labeledStatement(t.identifier(label), t.blockStatement(inner.stmts)) : t.blockStatement(inner.stmts));
+          stack = this.liftLabeledBlock(state, pc, esc, stack, emit);
           pc = esc;
           continue;
         }
@@ -856,13 +877,7 @@ class Lifter {
         // form a labeled block
         const esc = state.blockDone.has(pc) ? null : this.deepBreakTarget(state, pc, end);
         if (esc !== null) {
-          state.blockDone.add(pc);
-          const label = `L${++state.labelCounter}`;
-          state.blocks.push({ target: esc, label, used: false });
-          const inner = this.liftRange(state, pc, esc, stack);
-          const blk = state.blocks.pop();
-          stack = inner.stack;
-          emit(blk.used ? t.labeledStatement(t.identifier(label), t.blockStatement(inner.stmts)) : t.blockStatement(inner.stmts));
+          stack = this.liftLabeledBlock(state, pc, esc, stack, emit);
           pc = esc;
           continue;
         }
@@ -931,6 +946,33 @@ class Lifter {
     return { stmts, stack };
   }
 
+  /** `L: { ... }` for the code up to `esc`, which a jump inside leaves early (`break L`); the
+   *  label is dropped when nothing breaks out. Returns the stack after the block. */
+  liftLabeledBlock(state, pc, esc, stack, emit) {
+    state.blockDone.add(pc);
+    const label = `L${++state.labelCounter}`;
+    state.blocks.push({ target: esc, label, used: false });
+    const inner = this.liftRange(state, pc, esc, stack);
+    const blk = state.blocks.pop();
+    emit(blk.used ? t.labeledStatement(t.identifier(label), t.blockStatement(inner.stmts)) : t.blockStatement(inner.stmts));
+    return inner.stack;
+  }
+
+  /** a probe lifts code only to look at it; the returned function undoes what that lifting
+   *  recorded: declared slots (a `const` in a probed loop header), and unless `declaredOnly`, the
+   *  temp-register values and hidden registers */
+  snapshot(state) {
+    const frames = () => [...state.chain, ...state.enterFrames.values()];
+    const declared = new Map(frames().map((f) => [f, new Set(f.declared)]));
+    const tempValues = new Map(state.tempValues), hiddenRegs = new Set(state.hiddenRegs);
+    return ({ declaredOnly = false } = {}) => {
+      for (const f of frames()) f.declared = declared.has(f) ? declared.get(f) : new Set();
+      if (declaredOnly) return;
+      state.tempValues = tempValues;
+      state.hiddenRegs = hiddenRegs;
+    };
+  }
+
   /** push the result of a property store; when the stored value is still on top of the stack
    *  (`DUP; ...; SETPROP; DROP`, an assignment used as a value: `f(++o[k])`), the assignment
    *  takes that value's place, so it is not split into a temporary and a statement */
@@ -974,7 +1016,6 @@ class Lifter {
     return s;
   }
 
-  /** Statement for a jump to `tgt` from inside a region ending at `end`, or null. */
   /** pc after a run of EXIT_SCOPE instructions (a `break` may target either end of the run) */
   skipScopeExits(state, pc) {
     while (pc < state.instrs.length && this.mnem(state.instrs[pc][0]) === 'EXIT_SCOPE') pc++;
@@ -1042,6 +1083,7 @@ class Lifter {
     return best;
   }
 
+  /** Statement for a jump to `tgt` from inside a region ending at `end`, or null. */
   jumpStatement(state, tgt, end) {
     for (let i = state.blocks.length - 1; i >= 0; i--) {
       if (state.blocks[i].target === tgt) { state.blocks[i].used = true; return t.breakStatement(t.identifier(state.blocks[i].label)); }
@@ -1119,19 +1161,7 @@ class Lifter {
         const body = this.liftRange(state, bodyStart, bodyEnd, bodyStack);
         state.loops.pop();
         const bodyStmts = this.stripFlagStores(body.stmts, flagRegs, state);
-        // turn `let x = __it` / `x = __it` first statement into the loop binding
-        let left = null;
-        const first = bodyStmts[0];
-        const usedLater = (name) => bodyStmts.slice(1).some((x) => referencesName(x, name));
-        if (first && t.isVariableDeclaration(first) && first.declarations.length === 1 && t.isIdentifier(first.declarations[0].init, { name: valueId.name }) && !usedLater(valueId.name)) {
-          left = t.variableDeclaration(first.kind, [t.variableDeclarator(first.declarations[0].id)]);
-          bodyStmts.shift();
-        } else if (first && t.isExpressionStatement(first) && t.isAssignmentExpression(first.expression, { operator: '=' }) && t.isIdentifier(first.expression.right, { name: valueId.name }) && !usedLater(valueId.name)) {
-          left = first.expression.left;
-          bodyStmts.shift();
-        } else {
-          left = t.variableDeclaration('const', [t.variableDeclarator(valueId)]);
-        }
+        const left = takeLoopBinding(bodyStmts, valueId);
         const loop = t.forOfStatement(left, src, t.blockStatement(bodyStmts), !!isAsync);
         emit(this.labelled(loopRec, loop));
         return { stack, next };
@@ -1159,16 +1189,7 @@ class Lifter {
         const body = this.liftRange(state, H + 12 + d, skip, [keyId]);
         state.loops.pop();
         const bodyStmts = body.stmts;
-        let left;
-        const first = bodyStmts[0];
-        const keyUsedLater = bodyStmts.slice(1).some((x) => referencesName(x, keyId.name));
-        if (first && !keyUsedLater && t.isVariableDeclaration(first) && first.declarations.length === 1 && t.isIdentifier(first.declarations[0].init, { name: keyId.name })) {
-          left = t.variableDeclaration(first.kind, [t.variableDeclarator(first.declarations[0].id)]);
-          bodyStmts.shift();
-        } else if (first && !keyUsedLater && t.isExpressionStatement(first) && t.isAssignmentExpression(first.expression, { operator: '=' }) && t.isIdentifier(first.expression.right, { name: keyId.name })) {
-          left = first.expression.left;
-          bodyStmts.shift();
-        } else left = t.variableDeclaration('const', [t.variableDeclarator(keyId)]);
+        const left = takeLoopBinding(bodyStmts, keyId);
         if (process.env.VMDEC_TRACE) console.error(`[trace]   for-in idiom: keys r${keysReg} idx r${idxReg} body ${H + 12 + d}..${skip} exit ${exit} stmts=${bodyStmts.length}`);
         emit(this.labelled(loopRec, t.forInStatement(left, obj, t.blockStatement(bodyStmts))));
         return { stack, next: exit };
@@ -1209,10 +1230,9 @@ class Lifter {
     {
       // the probe lifts the header only to find the condition; declarations it records (e.g. a
       // `const` at the top of a `for (;;)` body) must not survive into the real lift of the body
-      const frames = () => [...state.chain, ...state.enterFrames.values()];
-      const saved = new Map(frames().map((f) => [f, new Set(f.declared)]));
+      const restore = this.snapshot(state);
       const probe = this.liftRange(state, H, this.firstJumpAt(state, H, L), []);
-      for (const f of frames()) f.declared = saved.has(f) ? saved.get(f) : new Set();
+      restore({ declaredOnly: true });
       const jpc = this.firstJumpAt(state, H, L);
       const jm = jpc < L ? this.mnem(instrs[jpc][0]) : null;
       if (jm && NUM_JUMP.has(jm) && probe.stmts.length === 0 && jumps[jpc] > L) {
@@ -1232,7 +1252,7 @@ class Lifter {
       state.loops.pop();
       drainImpure(body);
       const upd = this.liftRange(state, fl.updateStart, L, []);
-      const updExprs = [...upd.stmts.map((x) => (t.isExpressionStatement(x) ? x.expression : null)), ...upd.stack.filter((v) => !isPure(v))];
+      const updExprs = updateExpressions(upd);
       let test = condInfo.cond;
       if (condInfo.jumpWhenTrue) test = this.negate(test);
       if (updExprs.every(Boolean)) {
@@ -1313,7 +1333,7 @@ class Lifter {
       state.loops.pop();
       if (!body.stack.length) {
         const upd = this.liftRange(state, U, L, []);
-        const updExprs = [...upd.stmts.map((x) => (t.isExpressionStatement(x) ? x.expression : null)), ...upd.stack.filter((v) => !isPure(v))];
+        const updExprs = updateExpressions(upd);
         if (updExprs.every(Boolean)) {
           const update = updExprs.length === 0 ? null : updExprs.length === 1 ? updExprs[0] : t.sequenceExpression(updExprs);
           emit(this.labelled(loopRec, t.forStatement(null, null, update, t.blockStatement(body.stmts))));
@@ -1350,7 +1370,7 @@ class Lifter {
         return { stack, next: Math.max(exit, L + 1) };
       }
       const upd = this.liftRange(state, U, L, []);
-      const updExprs = [...upd.stmts.map((x) => (t.isExpressionStatement(x) ? x.expression : null)), ...upd.stack.filter((v) => !isPure(v))];
+      const updExprs = updateExpressions(upd);
       if (updExprs.every(Boolean)) {
         const update = updExprs.length === 0 ? null : updExprs.length === 1 ? updExprs[0] : t.sequenceExpression(updExprs);
         emit(this.labelled(loopRec, t.forStatement(null, test, update, t.blockStatement(body.stmts))));
@@ -1567,9 +1587,8 @@ class Lifter {
     }
 
     // value-producing branches with side-effect statements
-    const lastIsJump = (st) => st.length && (t.isReturnStatement(st[st.length - 1]) || t.isThrowStatement(st[st.length - 1]) || t.isBreakStatement(st[st.length - 1]) || t.isContinueStatement(st[st.length - 1]));
     if (fall.stack.length === other.stack.length && fall.stack.length >= 1 && fall.stack.slice(0, -1).every((v, i) => v === other.stack[i]) &&
-        !lastIsJump(fall.stmts) && !lastIsJump(other.stmts)) {
+        !endsWithJump(fall.stmts) && !endsWithJump(other.stmts)) {
       let a = fall.stack[fall.stack.length - 1], b = other.stack[other.stack.length - 1];
       let fallCond = jumpWhenTrue ? this.negate(cond) : cond;
       if (shortCircuit && !isPure(cond) && (a === cond || b === cond)) {
@@ -1623,9 +1642,8 @@ class Lifter {
       emit(t.ifStatement(test, t.blockStatement(thenStmts), elseStmts.length ? t.blockStatement(elseStmts) : null));
     }
     // resulting stack: prefer the fallthrough path unless it terminated
-    const terminated = (stmts) => stmts.length && (t.isReturnStatement(stmts[stmts.length - 1]) || t.isThrowStatement(stmts[stmts.length - 1]) || t.isBreakStatement(stmts[stmts.length - 1]) || t.isContinueStatement(stmts[stmts.length - 1]));
     let outStack = fall.stack.slice(0, common);
-    if (!terminated(fall.stmts) && fall.stack.length === other.stack.length && fall.stack.length > common) {
+    if (!endsWithJump(fall.stmts) && fall.stack.length === other.stack.length && fall.stack.length > common) {
       // both push the same number of extra values (unusual): keep fallthrough's
       outStack = fall.stack;
     }
@@ -1638,14 +1656,9 @@ class Lifter {
 
   trySwitch(state, pc, end, inStack, emit) {
     // the case tests are probed by lifting them; a failed attempt must leave no trace in the state
-    const frames = () => [...state.chain, ...state.enterFrames.values()];
-    const saved = { declared: new Map(frames().map((f) => [f, new Set(f.declared)])), tempValues: new Map(state.tempValues), hiddenRegs: new Set(state.hiddenRegs) };
+    const restore = this.snapshot(state);
     const r = this.trySwitchChain(state, pc, end, inStack, emit);
-    if (!r) {
-      for (const f of frames()) f.declared = saved.declared.has(f) ? saved.declared.get(f) : new Set();
-      state.tempValues = saved.tempValues;
-      state.hiddenRegs = saved.hiddenRegs;
-    }
+    if (!r) restore();
     return r;
   }
 
