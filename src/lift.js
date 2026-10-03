@@ -18,14 +18,25 @@
  * recursively and inlined at their MAKE_CLOSURE site.
  */
 const t = require('@babel/types');
-const { gen, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity } = require('./ast');
+const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
 /** Registers read / written by a behaviourally inferred template. */
+/** a TEMPLATE operand field: the whole operand, its low / high half, or a constant (`#n`) */
+const templateField = (f, operand) => (f === 'op' ? operand : f === 'lo' ? operand & 0xffff : f === 'hi' ? operand >>> 16 : Number(String(f).slice(1)));
+
+/** first pc of a try statement's handlers (catch, finally, else the end): where its body ends */
+const tryBodyEnd = (tr, fallback = Infinity) => (tr[0] !== null ? tr[0] : tr[1] !== null ? tr[1] : tr[2] !== null ? tr[2] : fallback);
+
+/** values left on a lifted range's stack that have effects become statements */
+function drainImpure(res) {
+  for (const v of res.stack) if (!isPure(v)) res.stmts.push(t.expressionStatement(v));
+}
+
 function templateRegEffects(e, operand) {
   const reads = [], writes = [];
-  const field = (f) => (f === 'op' ? operand : f === 'lo' ? operand & 0xffff : f === 'hi' ? operand >>> 16 : Number(String(f).slice(1)));
+  const field = (f) => templateField(f, operand);
   const walk = (x) => {
     if (!x) return;
     if (x.k === 'leaf' && /^R:/.test(x.key)) reads.push(field(x.key.slice(2)));
@@ -100,7 +111,6 @@ function numberNode(v) {
 function member(obj, key) {
   // key: AST node
   if (t.isStringLiteral(key) && isIdentName(key.value)) return t.memberExpression(obj, t.identifier(key.value));
-  if (t.isNumericLiteral(key)) return t.memberExpression(obj, key, true);
   return t.memberExpression(obj, key, true);
 }
 
@@ -281,12 +291,10 @@ function containsCall(node) {
 let HOST_NAMES = new Set();
 const fresh = (n) => { while (HOST_NAMES.has(n)) n += "_"; return n; };
 class Frame {
-  constructor(id, slotCount, opts = {}) {
+  constructor(id, opts = {}) {
     this.id = id;
-    this.slotCount = slotCount;
     this.names = new Map(); // slot -> variable name
     this.declared = new Set();
-    this.kinds = new Map(); // slot -> 'let' | 'const'
     this.thisSlot = null;
     this.external = !!opts.external; // host / parent scope: never declare here
   }
@@ -329,7 +337,7 @@ class Lifter {
       return { params: [], body: [t.expressionStatement(t.stringLiteral(`/* recursive program ${prog.id} */`))], usesArguments: false };
     }
     this.active.add(prog.id);
-    const fnFrame = new Frame(this.frameCounter++, prog.scopeSlots);
+    const fnFrame = new Frame(this.frameCounter++);
     const state = {
       prog,
       instrs: prog.instrs,
@@ -349,7 +357,6 @@ class Lifter {
       blocks: [],
       blockDone: new Set(),
       labelCounter: 0,
-      declaredLets: [],
       isTopLevel,
       catchCounter: 0,
     };
@@ -445,7 +452,7 @@ class Lifter {
       if (m === 'STORE_REG' || m === 'REG_INC' || m === 'REG_DEC' || m === 'REG_PREINC' || m === 'REG_PREDEC') storedRegs.add(operand);
       if (m === 'LOAD_ARG' || m === 'STORE_ARG') argSlots.add(operand);
       if (m === 'TEMPLATE' || m === 'COND_TEMPLATE') {
-        const f = (x) => (x === 'op' ? operand : x === 'lo' ? operand & 0xffff : x === 'hi' ? operand >>> 16 : Number(String(x).slice(1)));
+        const f = (x) => templateField(x, operand);
         for (const w of e.writes || []) if (w.target.startsWith('R:')) storedRegs.add(f(w.target.slice(2)));
         const walk = (x) => { if (!x) return; if (x.k === 'leaf' && x.key.startsWith('A:')) argSlots.add(f(x.key.slice(2))); walk(x.a); walk(x.b); };
         [...(e.pushes || []), ...(e.writes || []).map((w) => w.expr), e.cond].forEach(walk);
@@ -548,7 +555,7 @@ class Lifter {
       const inTry = Object.entries(state.tries).some(([tp, tr]) => {
         if (!tr) return false;
         // the try body ends where the first handler (catch / finally) or the region end begins
-        const hStart = tr[0] !== null ? tr[0] : tr[1] !== null ? tr[1] : tr[2] !== null ? tr[2] : Infinity;
+        const hStart = tryBodyEnd(tr);
         return sps[0] > Number(tp) && sps[0] < hStart && ls.some((l) => l >= hStart);
       });
       if (inTry) continue;
@@ -627,7 +634,7 @@ class Lifter {
 
   frameForEnter(state, enterPc) {
     if (state.frameAlias && state.frameAlias.has(enterPc)) enterPc = state.frameAlias.get(enterPc);
-    if (!state.enterFrames.has(enterPc)) state.enterFrames.set(enterPc, new Frame(this.frameCounter++, state.instrs[enterPc][1]));
+    if (!state.enterFrames.has(enterPc)) state.enterFrames.set(enterPc, new Frame(this.frameCounter++));
     return state.enterFrames.get(enterPc);
   }
 
@@ -872,7 +879,6 @@ class Lifter {
         const jr = this.jumpStatement(state, tgt, end);
         if (jr === 'end') { pc = this.nextReachable(state, pc + 1, end); continue; }
         if (jr) {
-          this.flushImpure(stack, emit, state);
           emit(jr);
           // code between here and the next jump target is unreachable unless jumped into
           pc = this.nextReachable(state, pc + 1, end);
@@ -1226,7 +1232,7 @@ class Lifter {
       state.loops.push(loopRec);
       const body = this.liftRange(state, condEnd + 1, fl.tailStart, []);
       state.loops.pop();
-      for (const v of body.stack) if (!isPure(v)) body.stmts.push(t.expressionStatement(v));
+      drainImpure(body);
       const upd = this.liftRange(state, fl.updateStart, L, []);
       const updExprs = [...upd.stmts.map((x) => (t.isExpressionStatement(x) ? x.expression : null)), ...upd.stack.filter((v) => !isPure(v))];
       let test = condInfo.cond;
@@ -1322,7 +1328,7 @@ class Lifter {
       state.loops.push(loopRec);
       const tail = this.liftRange(state, U, L, body.stack);
       state.loops.pop();
-      for (const v of tail.stack) if (!isPure(v)) tail.stmts.push(t.expressionStatement(v));
+      drainImpure(tail);
       emit(this.labelled(loopRec, t.whileStatement(t.booleanLiteral(true), t.blockStatement([...body.stmts, ...tail.stmts]))));
       return { stack, next: exitDefault };
     }
@@ -1341,7 +1347,7 @@ class Lifter {
         state.loops.push(loopRec);
         const tail = this.liftRange(state, U, L, body.stack);
         state.loops.pop();
-        for (const v of tail.stack) if (!isPure(v)) tail.stmts.push(t.expressionStatement(v));
+        drainImpure(tail);
         emit(this.labelled(loopRec, t.whileStatement(test, t.blockStatement([...body.stmts, ...tail.stmts]))));
         return { stack, next: Math.max(exit, L + 1) };
       }
@@ -1364,14 +1370,14 @@ class Lifter {
       state.loops.pop();
       let test = condInfo.cond;
       if (condInfo.jumpWhenTrue) test = this.negate(test);
-      for (const v of body.stack) if (!isPure(v)) body.stmts.push(t.expressionStatement(v));
+      drainImpure(body);
       emit(this.labelled(loopRec, t.whileStatement(test, t.blockStatement(body.stmts))));
       return { stack, next: Math.max(exit, L + 1) };
     }
     state.loops.push(loopRec);
     const body = this.liftRange(state, H, L, []);
     state.loops.pop();
-    for (const v of body.stack) if (!isPure(v)) body.stmts.push(t.expressionStatement(v));
+    drainImpure(body);
     emit(this.labelled(loopRec, t.whileStatement(t.booleanLiteral(true), t.blockStatement(body.stmts))));
     return { stack, next: exitDefault };
   }
@@ -1486,14 +1492,13 @@ class Lifter {
     let jumpStack = base.slice();
     if (info.jumpStackOverride) jumpStack = info.jumpStackOverride;
     else if (m !== 'JMPF_KEEP' && m !== 'JMPT_KEEP' && m !== 'FUSED_JMPT' && m !== 'FUSED_JMPF') jumpStack.pop(); // cond popped
-    if (m === 'JMPF_POP2' || m === 'JMPT_POP2') { /* keepOnJump stays on the jump path */ }
     const fallStack = stack; // condFromJump already applied fallthrough pops
 
     // jump leaves the region
     if (T > end || T <= pc) {
       state.alive.delete(cond);
-    if (info.nullishOf) state.alive.delete(info.nullishOf);
-    if (info.keepOnJump) state.alive.delete(info.keepOnJump);
+      if (info.nullishOf) state.alive.delete(info.nullishOf);
+      if (info.keepOnJump) state.alive.delete(info.keepOnJump);
       const js = this.jumpStatement(state, T, end);
       let test = jumpWhenTrue ? cond : this.negate(cond);
       if (js && js !== 'end') {
@@ -1539,7 +1544,7 @@ class Lifter {
       const b = other.stack[other.stack.length - 1]; // value when jumping
       let expr;
       const fallCond = jumpWhenTrue ? this.negate(cond) : cond; // condition under which fallthrough value is used
-      if (info.keepOnJump && b === info.keepOnJump && (m === 'JMPF_KEEP' || m === 'JMPT_KEEP' || m === 'JMPF_POP2' || m === 'JMPT_POP2') && (m === 'JMPF_KEEP' || m === 'JMPT_KEEP' ? true : b === cond || true)) {
+      if (info.keepOnJump && b === info.keepOnJump) { // (set only by the KEEP / POP2 jumps)
         expr = t.logicalExpression(jumpWhenTrue ? '||' : '&&', b, a);
       } else if (info.nullishOf && b === info.nullishOf) {
         expr = t.logicalExpression('??', b, a);
@@ -1760,7 +1765,7 @@ class Lifter {
       if (bEnd > swEnd) bEnd = swEnd;
       const testsHere = tests.filter((x) => x.target === B);
       const body = this.liftRange(state, B, bEnd, []);
-      for (const v of body.stack) if (!isPure(v)) body.stmts.push(t.expressionStatement(v));
+      drainImpure(body);
       // label(s)
       const labels = testsHere.map((x) => caseExprs[tests.indexOf(x)]);
       if (defaultTarget === B) labels.push(null);
@@ -1791,7 +1796,6 @@ class Lifter {
     const K = state.prog.consts;
     const isStr = (q, v) => K[instrs[q][1]] && K[instrs[q][1]].v === v;
     // header before TRY_ENTER
-    if (!(M(pc - 4) === 'STORE_REG' && M(pc - 3) === 'PUSH_CONST' && M(pc - 2) === 'STORE_REG' && M(pc - 1) === 'PUSH_CONST' || M(pc - 2) === 'STORE_REG' && M(pc - 1) === 'PUSH_CONST')) { /* shape checked below */ }
     const itReg = M(pc - 4) === 'GET_ITERATOR' && M(pc - 3) === 'STORE_REG' ? instrs[pc - 3][1] : null;
     const doneReg = M(pc - 1) === 'STORE_REG' ? instrs[pc - 1][1] : null;
     if (itReg === null || doneReg === null || !state.regIter.has(itReg)) return null;
@@ -1806,7 +1810,7 @@ class Lifter {
     // hole: ...; PUSH; STORE done; x: DROP
     const holeElement = (q) => elementHead(q) && M(q + 7) === 'PUSH_CONST' && M(q + 8) === 'STORE_REG' && M(q + 9) === 'DROP' && jumps[q + 6] === q + 9;
     let tp = -1;
-    for (let q = pc + 1; q < (C !== null ? C : F !== null ? F : E); q++) if (M(q) === 'TRY_POP') tp = q;
+    for (let q = pc + 1; q < tryBodyEnd(state.tries[pc]); q++) if (M(q) === 'TRY_POP') tp = q;
     if (tp < 0) return null;
     // walk the elements
     const segs = [];
@@ -1991,7 +1995,7 @@ class Lifter {
       let fEnd = regionEnd;
       for (let q = fStart; q < regionEnd; q++) if (this.mnem(instrs[q][0]) === 'FINALLY_END') fEnd = q;
       const finRes = this.liftRange(state, fStart, fEnd, []);
-      for (const v of finRes.stack) if (!isPure(v)) finRes.stmts.push(t.expressionStatement(v));
+      drainImpure(finRes);
       finalizer = t.blockStatement(finRes.stmts);
     }
     if (!handler && !finalizer) handler = t.catchClause(null, t.blockStatement([]));
@@ -2007,14 +2011,12 @@ class Lifter {
 
   pop(stack) {
     if (stack.length) return stack.pop();
-    this.underflows = (this.underflows || 0) + 1;
     const u = t.identifier('undefined');
     u.__underflow = true;
     return u;
   }
   peek(stack) {
     if (stack.length) return stack[stack.length - 1];
-    this.underflows = (this.underflows || 0) + 1;
     const u = t.identifier('undefined');
     u.__underflow = true;
     stack.push(u);
@@ -2040,10 +2042,6 @@ class Lifter {
     if (v && v.__global && t.isIdentifier(v) && !(v.name in globalThis)) { emit(t.expressionStatement(v)); return; }
     if (!v || isPure(v)) return;
     emit(t.expressionStatement(v));
-  }
-
-  flushImpure(stack, emit) {
-    // nothing: values stay on the stack; used before break/continue to keep side effects
   }
 
   /**
@@ -2099,7 +2097,6 @@ class Lifter {
       let affected = !isPure(v);
       if (!affected) for (const n of assigned) if (referencesName(v, n)) affected = true;
       if (!affected && readsProps(v, props)) affected = true;
-      if (!affected && stmtHasCall && !t.isIdentifier(v)) affected = false; // property reads are assumed stable
       if (affected) {
         // values below that read a variable this one assigns are evaluated before it
         const own = assignedNames(t.expressionStatement(v));
@@ -2118,10 +2115,10 @@ class Lifter {
     }
   }
 
-  /** literals under construction keep their node, but values already evaluated into them
-   *  (calls etc.) precede any statement emitted now: move those into temporaries */
   tmpName() { return fresh(`_t${this.tempCounter++}`); }
 
+  /** literals under construction keep their node, but values already evaluated into them
+   *  (calls etc.) precede any statement emitted now: move those into temporaries */
   spillBuilder(b, emit, assigned = null, props = null) {
     // a pure value (e.g. a variable read) is affected only by a statement that writes what it reads
     const touched = (v) => (assigned && [...assigned].some((n) => referencesName(v, n))) || (props && props.size && readsProps(v, props));
@@ -2145,7 +2142,7 @@ class Lifter {
       emit(t.variableDeclaration('const', [t.variableDeclarator(id, v)]));
       holder[key] = id;
     }
-}
+  }
 
   /**
    * A branch that emits a statement spills pending values of the stack it inherited
@@ -2293,13 +2290,14 @@ class Lifter {
       // the TDZ error message; if the program has exactly one identifier-like string constant that
       // no instruction refers to, and only one such unknown slot, that is the name.
       const unknown = new Set();
+      const savedPc = state.curPc;
       state.instrs.forEach(([op, operand], pc) => {
         if (this.mnem(op) === 'LOAD_SCOPE' || this.mnem(op) === 'STORE_SCOPE') {
           state.curPc = pc;
           if (!this.frameAtQuiet(state, operand >>> 16)) unknown.add(operand);
         }
       });
-      state.curPc = state.curPc;
+      state.curPc = savedPc;
       if (unknown.size === 1) {
         const used = new Set();
         for (const [op, operand] of state.instrs) {
@@ -2491,7 +2489,6 @@ class Lifter {
         if (!p.name) p.selfName = name;
         frame.names.set(operand, name);
         frame.declared.add(operand);
-        frame.selfSlot = operand;
         return;
       }
       case 'STORE_LOCAL': case 'STORE_LOCAL_CONST': {
@@ -2499,7 +2496,6 @@ class Lifter {
         if (operand === -1) { this.dropValue(pop(), emit); return; }
         const frame = this.currentFrame(state);
         const v = pop();
-        if (v.__marker === 'iter') { /* iterator stored into a scope slot: keep as expression */ }
         // a class under construction bound to a const slot (the inner class-name binding, or a
         // temporary of the private-member lowering): inside the class body that is the class's
         // own name, so the slot is an alias and the builder keeps collecting members
@@ -2552,12 +2548,7 @@ class Lifter {
         return;
       }
       case 'FUSED_BINOP': push(this.binary(e.op, this.regId(state, operand & 0xffff), constAt(operand >>> 16))); return;
-      case 'UNARY': {
-        const v = pop();
-        if (e.op === 'typeof') push(t.unaryExpression('typeof', v));
-        else push(t.unaryExpression(e.op, v));
-        return;
-      }
+      case 'UNARY': push(t.unaryExpression(e.op, pop())); return;
       case 'VOID': push(t.unaryExpression('void', pop())); return;
       case 'TO_NUMERIC': case 'TO_PROPERTY_KEY': return; // coercions: identity for source recovery
       // (tagged: only an increment is an update `++x`, which also works on BigInts; `x + 1` does not)
@@ -2671,8 +2662,7 @@ class Lifter {
       // iteration
       case 'GET_ITERATOR': { const src = pop(); const n = t.identifier('__iter'); n.__marker = 'iter'; n.__src = src; push(n); return; }
       case 'GET_ASYNC_ITERATOR': { const src = pop(); const n = t.identifier('__aiter'); n.__marker = 'iter'; n.__src = src; n.__async = true; push(n); return; }
-      case 'ITER_NEXT_RESULT': { const it = pop(); push(t.callExpression(t.memberExpression(this.iterExpr(it), t.identifier('next')), [])); return; }
-      case 'ITER_NEXT_CALL': { const it = pop(); push(t.callExpression(t.memberExpression(this.iterExpr(it), t.identifier('next')), [])); return; }
+      case 'ITER_NEXT_RESULT': case 'ITER_NEXT_CALL': { const it = pop(); push(t.callExpression(t.memberExpression(this.iterExpr(it), t.identifier('next')), [])); return; }
       case 'ITER_RESULT_DONE': push(t.memberExpression(pop(), t.identifier('done'))); return;
       case 'ITER_CLOSE': case 'ITER_CLOSE_SILENT': {
         // IteratorClose: the `return` method is optional (array iterators have none)
@@ -2783,7 +2773,7 @@ class Lifter {
   /** Build the AST for a template expression. ctx: { state, operand, popped } */
   templateExpr(x, ctx) {
     const { state, operand, popped } = ctx;
-    const field = (f) => (f === 'op' ? operand : f === 'lo' ? operand & 0xffff : f === 'hi' ? operand >>> 16 : Number(String(f).slice(1)));
+    const field = (f) => templateField(f, operand);
     switch (x.k) {
       case 'leaf': {
         const [tag, f] = x.key.split(':');
@@ -2875,7 +2865,7 @@ class Lifter {
       if (!self) return e;
     }
     // tag`...${x}...`: first argument is a frozen template object with raw strings
-    if (args.length && args[0] && args[0].__templateRaw && (thisObj === null || ((t.isMemberExpression(callee)) && gen(callee.object) === gen(thisObj)))) {
+    if (args.length && args[0] && args[0].__templateRaw && (thisObj === null || (t.isMemberExpression(callee) && sameExpr(callee.object, thisObj)))) {
       const cooked = args[0].__templateCooked || args[0].elements;
       const raw = args[0].__templateRaw;
       const exprs = args.slice(1);
@@ -2889,10 +2879,9 @@ class Lifter {
       return t.callExpression(callee, args);
     }
     // method call: callee is `thisObj.prop`
-    if ((t.isMemberExpression(callee) || t.isOptionalMemberExpression(callee)) && gen(callee.object) === gen(thisObj)) {
+    if ((t.isMemberExpression(callee) || t.isOptionalMemberExpression(callee)) && sameExpr(callee.object, thisObj)) {
       return t.callExpression(callee, args);
     }
-    if (callee.__templateTag) return t.callExpression(callee, args);
     return t.callExpression(t.memberExpression(callee, t.identifier('call')), [thisObj, ...args]);
   }
 
@@ -3041,9 +3030,8 @@ class Lifter {
     }
     const fn = t.functionExpression(id, params, block, !!kind.generator, !!kind.async);
     if (kind.kind === 'method') fn.__methodKind = true;
-    if (kind.kind === 'arrow') fn.__wasArrow = true;
     return fn;
   }
 }
 
-module.exports = { Lifter, Frame, isPure, constNode };
+module.exports = { Lifter, Frame };

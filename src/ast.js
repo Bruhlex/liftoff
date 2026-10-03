@@ -7,6 +7,9 @@ const generate = require('@babel/generator').default;
 /** compact source text of a node, used to compare expressions */
 const gen = (node) => generate(node, { compact: true, comments: false }).code;
 
+/** the same expression: one node (a DUP'd value) or equal source text */
+const sameExpr = (a, b) => a === b || (!!a && !!b && gen(a) === gen(b));
+
 const RESERVED = new Set('break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof new null return super switch this throw true try typeof var void while with yield let static implements interface package private protected public await'.split(' '));
 const isIdentName = (s) => typeof s === 'string' && /^[A-Za-z_$][\w$]*$/.test(s) && !RESERVED.has(s);
 
@@ -48,4 +51,4 @@ function replaceIdentity(tree, node, rep) {
   return tree;
 }
 
-module.exports = { gen, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity };
+module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity };

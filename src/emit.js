@@ -64,7 +64,7 @@ function classifyEntryArgs(call, ex, vm) {
 /** Build an external Frame from a host scope object literal. */
 function frameFromScopeLiteral(obj, vm, lifter, warn) {
   const slotsKey = vm.roles.scopeProps.slots;
-  const frame = new Frame(lifter.frameCounter++, 0, { external: true });
+  const frame = new Frame(lifter.frameCounter++, { external: true });
   const prop = obj.properties.find((p) => t.isObjectProperty(p) && (t.isIdentifier(p.key, { name: slotsKey }) || t.isStringLiteral(p.key, { value: slotsKey })));
   if (!prop) return frame;
   const v = prop.value;
@@ -449,6 +449,8 @@ function argumentsToParams(path) {
   const visit = (node, parent) => {
     if (!node || typeof node.type !== 'string' || other) return;
     if (node !== n && t.isFunction(node) && !t.isArrowFunctionExpression(node)) return;
+    // `delete arguments[i]` has no parameter equivalent
+    if (t.isUnaryExpression(node, { operator: 'delete' }) && t.isMemberExpression(node.argument) && t.isIdentifier(node.argument.object, { name: 'arguments' })) { other = true; return; }
     if (t.isIdentifier(node, { name: 'arguments' })) {
       if (t.isMemberExpression(parent) && parent.object === node && parent.computed && t.isNumericLiteral(parent.property) && Number.isInteger(parent.property.value)) uses.push(parent);
       else other = true;
@@ -466,7 +468,6 @@ function argumentsToParams(path) {
   const isDefaultOf = (st, i) => t.isIfStatement(st) && t.isBinaryExpression(st.test, { operator: '===' }) && t.isMemberExpression(st.test.left) &&
     t.isIdentifier(st.test.left.object, { name: 'arguments' }) && t.isNumericLiteral(st.test.left.property, { value: i }) && t.isIdentifier(st.test.right, { name: 'undefined' });
   if (!isDefaultOf(first, P)) return;
-  if (uses.some((u) => t.isUnaryExpression(u, { operator: 'delete' }))) return;
   const max = Math.max(...uses.map((u) => u.property.value));
   const names = n.params.map((p) => p.name);
   for (let i = P; i <= max; i++) {
