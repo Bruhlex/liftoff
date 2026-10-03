@@ -1074,6 +1074,11 @@ function stripRedundantStrict(file) {
   walk(file.program || file, false);
 }
 
+/** does a named function expression assign its own name? That name is immutable (an assignment
+ *  throws in strict code), the name of a function declaration is not: keep the expression */
+const assignsOwnName = (fn) => !!fn.id && containsNode(fn, (x) =>
+  (t.isAssignmentExpression(x) && t.isIdentifier(x.left, { name: fn.id.name })) || (t.isUpdateExpression(x) && t.isIdentifier(x.argument, { name: fn.id.name })));
+
 /** a return statement of this function (returns of nested functions don't count) */
 const containsReturn = (node) => containsOwn([node], (n) => t.isReturnStatement(n));
 
@@ -1196,7 +1201,7 @@ function cleanup(file) {
       p.scope.rename(n.id.name, name);
       // `let f = function f() {}` -> `function f() {}` right away (with a clean binding)
       const decl = p.parentPath;
-      if (decl.isVariableDeclaration() && decl.node.declarations.length === 1 && Array.isArray(decl.container)) {
+      if (decl.isVariableDeclaration() && decl.node.declarations.length === 1 && Array.isArray(decl.container) && !assignsOwnName(n.init)) {
         const fn = n.init;
         p.scope.removeBinding(name);
         decl.replaceWith(t.functionDeclaration(fn.id, fn.params, fn.body, fn.generator, fn.async));
@@ -1212,7 +1217,7 @@ function cleanup(file) {
       mergeLetDeclarations(body);
       for (let i = 0; i < body.length; i++) {
         const st = body[i];
-        if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && t.isFunctionExpression(st.declarations[0].init) && st.declarations[0].init.id && st.declarations[0].init.id.name === st.declarations[0].id.name) {
+        if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && t.isFunctionExpression(st.declarations[0].init) && st.declarations[0].init.id && st.declarations[0].init.id.name === st.declarations[0].id.name && !assignsOwnName(st.declarations[0].init)) {
           const fn = st.declarations[0].init;
           body[i] = t.functionDeclaration(fn.id, fn.params, fn.body, fn.generator, fn.async);
         }
@@ -1234,6 +1239,9 @@ function cleanup(file) {
         const isSet = (x) => t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression, { operator: '=' }) && t.isIdentifier(x.expression.left, { name: test.left.name });
         let value;
         if (cons.length === 1 && isSet(cons[0])) value = cons[0].expression.right;
+        // `_ = (a = f, b = g)`: expressions before the parameter's own assignment
+        else if (cons.length > 1 && isSet(cons[cons.length - 1]) && cons.slice(0, -1).every((x) => t.isExpressionStatement(x) && !t.isThrowStatement(x)))
+          value = t.sequenceExpression([...cons.slice(0, -1).map((x) => x.expression), cons[cons.length - 1].expression.right]);
         // a default that reads a later parameter in its TDZ: `{ throw new ReferenceError(..); a = undefined; }`
         else if (cons.length === 2 && t.isThrowStatement(cons[0]) && isSet(cons[1])) value = t.callExpression(t.arrowFunctionExpression([], t.blockStatement([cons[0]])), []);
         else break;
@@ -1614,7 +1622,7 @@ function functionHolderBinding(scope, name, b) {
   const def = singleDefinition(b);
   if (!def) return false;
   const rhs = def.expr;
-  if (!t.isFunctionExpression(rhs) || !rhs.id) return false;
+  if (!t.isFunctionExpression(rhs) || !rhs.id || assignsOwnName(rhs)) return false;
   const target = rhs.id.name;
   if (target !== name && (scope.hasBinding(target) || scope.hasGlobal(target) || identifierUsedOutside(scope.block, target, rhs))) return false;
   if (target !== name && b.referencePaths.some((r) => r.scope.hasBinding(target))) return false;

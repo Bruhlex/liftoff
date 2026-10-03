@@ -152,7 +152,8 @@ function propKey(key) {
     // `__proto__: v` would set the prototype; a defined property of that name needs a computed key
     if (key.value === '__proto__') return { key, computed: true };
     if (isIdentName(key.value)) return { key: t.identifier(key.value), computed: false };
-    if (/^(0|[1-9]\d*)$/.test(key.value)) return { key: t.numericLiteral(Number(key.value)), computed: false };
+    // (a numeric key only when the number prints as the same string: not `999999999999999999`)
+    if (/^(0|[1-9]\d*)$/.test(key.value) && String(Number(key.value)) === key.value) return { key: t.numericLiteral(Number(key.value)), computed: false };
     return { key, computed: false };
   }
   if (t.isNumericLiteral(key)) return { key, computed: false };
@@ -226,7 +227,7 @@ function isDroppable(node) {
     case 'ArrayExpression': case 'ObjectExpression': {
       // (a dropped literal is the right side of a destructuring assignment, `[a, b] = [b, a]`, so a
       // member read in it is a compiler artifact); a spread runs an iterator or getters
-      const value = (e) => (t.isArrayExpression(e) || t.isObjectExpression(e) ? isDroppable(e) : isPure(e));
+      const value = (e) => (t.isArrayExpression(e) || t.isObjectExpression(e) || t.isIdentifier(e) ? isDroppable(e) : isPure(e));
       if (t.isArrayExpression(node)) return node.elements.every((e) => !e || (!t.isSpreadElement(e) && value(e)));
       return node.properties.every((p) => (t.isObjectMethod(p) || (t.isObjectProperty(p) && value(p.value))) && (!p.computed || (t.isLiteral(p.key) && !t.isTemplateLiteral(p.key))));
     }
@@ -2362,7 +2363,7 @@ class Lifter {
       this.ctx.warn('scope of a captured variable is unknown (not passed by the host)');
       return t.identifier(`__scope_unknown_${slot}`);
     }
-    if (frame.thisSlot === slot) return t.thisExpression();
+    if (frame.thisSlot === slot) { const th = t.thisExpression(); th.__lexical = true; return th; } // `this` captured by an arrow
     return t.identifier(frame.nameOf(slot, 's'));
   }
 
@@ -2397,7 +2398,8 @@ class Lifter {
       }
       case 'PUSH_THIS': case 'PUSH_LEXICAL_THIS':
         if (state.skipPushThis === pc) { state.skipPushThis = null; return; } // the value of `super(...)`, already on the stack
-        push(t.thisExpression()); return;
+        { const th = t.thisExpression(); if (m === 'PUSH_LEXICAL_THIS') th.__lexical = true; push(th); }
+        return;
       case 'PUSH_NEW_TARGET': push(t.metaProperty(t.identifier('new'), t.identifier('target'))); return;
       case 'PUSH_ARGUMENTS': state.usesArguments = true; push(t.identifier('arguments')); return;
       case 'PUSH_SCOPE': { const s = t.identifier('__scope'); s.__marker = 'scope'; push(s); return; }
@@ -2409,7 +2411,8 @@ class Lifter {
         const v = pop();
         // in a derived constructor a dropped `this` is the check that `this` is initialized
         // (`super[super()]` reads `this` before calling super)
-        if (t.isThisExpression(v) && state.prog.derived && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.thisExpression())); return; }
+        // (an arrow's dropped `this` is the source's `this;`, which throws before super() too)
+        if (t.isThisExpression(v) && (state.prog.derived || v.__lexical) && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.thisExpression())); return; }
         if (v && v.__coercible && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.assignmentExpression('=', t.objectPattern([]), v))); return; }
         if (!stack.includes(v) && !(state.alive && state.alive.has(v)) && !isDroppable(v)) this.emitStatement(state, stack, emit, t.expressionStatement(v));
         return;
