@@ -22,18 +22,18 @@ the same code are lost when the obfuscator compiles to bytecode.
 
 ## Supported versions
 
-Written and tested for the VM mode of obfuscator.io's hosted service, with builds
-made in the **free tier** of the dashboard (<https://obfuscator.io/dashboard>):
+The VM mode of obfuscator.io's hosted service, **free tier** of the dashboard
+(<https://obfuscator.io/dashboard>):
 
-* 16 builds from 5 July 2026, earlier code generator (`samples/`);
-* 120 builds from 29 September 2026, **version 8.0.6**, preset *VM Low*, alone and
-  combined with string arrays, control-flow flattening, expression obfuscation, raw
-  output and the Node target (`corpus/builds/`).
+* the earlier code generator (July 2026);
+* **versions 8.0.6 and 8.0.8**, preset *VM Low*, alone and combined with string arrays,
+  control-flow flattening, numbers to expressions, split strings, transform object
+  keys, raw output and the Browser or Node target.
 
-The separate VM hardening options of the dashboard (encoded jumps, stateful opcodes,
-split dispatcher, …) were not part of these builds and are untested. A later version
-may change the instruction set; unknown handlers are then reported instead of
-guessed, and the recovery figure drops below 100 %.
+The paid VM hardening options of the dashboard (encoded jumps, stateful opcodes, split
+dispatcher, …) are untested. A later version may change the instruction set; unknown
+handlers are then reported instead of guessed, and the recovery figure drops below
+100 %.
 
 ## Recovery figure and files without a VM
 
