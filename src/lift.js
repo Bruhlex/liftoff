@@ -18,7 +18,7 @@
  * recursively and inlined at their MAKE_CLOSURE site.
  */
 const t = require('@babel/types');
-const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode } = require('./ast');
+const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, negate } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
@@ -1257,7 +1257,7 @@ class Lifter {
       state.loops.pop();
       const condInfo = this.condFromJump(state, lastM, instrs[L][1], body.stack);
       let test = condInfo.cond;
-      if (!condInfo.jumpWhenTrue) test = this.negate(test);
+      if (!condInfo.jumpWhenTrue) test = negate(test);
       // the test is outside the body's block: variables it reads that the body declares at its
       // top level are declared in front of the loop and only assigned inside
       const testNames = new Set();
@@ -1325,7 +1325,7 @@ class Lifter {
       const upd = this.liftRange(state, fl.updateStart, L, []);
       const updExprs = updateExpressions(upd);
       let test = condInfo.cond;
-      if (condInfo.jumpWhenTrue) test = this.negate(test);
+      if (condInfo.jumpWhenTrue) test = negate(test);
       if (condInfo.pre) test = t.sequenceExpression([...condInfo.pre, test]);
       if (updExprs.every(Boolean)) {
         // the declaration of the loop variables right before the loop becomes the init
@@ -1446,7 +1446,7 @@ class Lifter {
       const body = this.liftRange(state, condEnd + 1, U, []);
       state.loops.pop();
       let test = condInfo.cond;
-      if (condInfo.jumpWhenTrue) test = this.negate(test);
+      if (condInfo.jumpWhenTrue) test = negate(test);
       // a value still pending at U: U is the join of a conditional expression
       // (`x = c ? a : b; i++`), not the start of an update clause; the tail continues the body
       if (body.stack.length) {
@@ -1475,7 +1475,7 @@ class Lifter {
       const body = this.liftRange(state, condEnd + 1, L, []);
       state.loops.pop();
       let test = condInfo.cond;
-      if (condInfo.jumpWhenTrue) test = this.negate(test);
+      if (condInfo.jumpWhenTrue) test = negate(test);
       drainImpure(body);
       emit(this.labelled(loopRec, t.whileStatement(test, t.blockStatement(body.stmts))));
       return { stack, next: Math.max(exit, L + 1) };
@@ -1552,16 +1552,6 @@ class Lifter {
     return { cond, jumpWhenTrue: e.mnemonic === 'FUSED_JMPT' };
   }
 
-  negate(expr) {
-    if (t.isUnaryExpression(expr, { operator: '!' })) return expr.argument;
-    if (t.isBinaryExpression(expr)) {
-      const inv = { '===': '!==', '!==': '===', '==': '!=', '!=': '==', '<': '>=', '>=': '<', '>': '<=', '<=': '>' }[expr.operator];
-      if (inv) return t.binaryExpression(inv, expr.left, expr.right);
-    }
-    if (t.isBooleanLiteral(expr)) return t.booleanLiteral(!expr.value);
-    return t.unaryExpression('!', expr);
-  }
-
   // -------------------------------------------------------------------------
   // conditionals
   // -------------------------------------------------------------------------
@@ -1606,7 +1596,7 @@ class Lifter {
       if (info.nullishOf) state.alive.delete(info.nullishOf);
       if (info.keepOnJump) state.alive.delete(info.keepOnJump);
       const js = this.jumpStatement(state, T, end);
-      let test = jumpWhenTrue ? cond : this.negate(cond);
+      let test = jumpWhenTrue ? cond : negate(cond);
       if (js && js !== 'end') {
         this.spillForStatement(state, fallStack, emit, null);
         emit(t.ifStatement(test, t.blockStatement([js])));
@@ -1649,7 +1639,7 @@ class Lifter {
       const a = fall.stack[fall.stack.length - 1]; // value when falling through
       const b = other.stack[other.stack.length - 1]; // value when jumping
       let expr;
-      const fallCond = jumpWhenTrue ? this.negate(cond) : cond; // condition under which fallthrough value is used
+      const fallCond = jumpWhenTrue ? negate(cond) : cond; // condition under which fallthrough value is used
       if (info.keepOnJump && b === info.keepOnJump) { // (set only by the KEEP / POP2 jumps)
         expr = t.logicalExpression(jumpWhenTrue ? '||' : '&&', b, a);
       } else if (info.nullishOf && b === info.nullishOf) {
@@ -1678,13 +1668,13 @@ class Lifter {
     if (fall.stack.length === other.stack.length && fall.stack.length >= 1 && fall.stack.slice(0, -1).every((v, i) => v === other.stack[i]) &&
         !endsWithJump(fall.stmts) && !endsWithJump(other.stmts)) {
       let a = fall.stack[fall.stack.length - 1], b = other.stack[other.stack.length - 1];
-      let fallCond = jumpWhenTrue ? this.negate(cond) : cond;
+      let fallCond = jumpWhenTrue ? negate(cond) : cond;
       if (shortCircuit && !isPure(cond) && (a === cond || b === cond)) {
         // the short-circuit operand is needed as test and as value: evaluate it once
         const id = t.identifier(this.tmpName());
         emit(t.variableDeclaration('const', [t.variableDeclarator(id, cond)]));
         const rep = (x) => replaceIdentity(x, cond, id);
-        a = rep(a); b = rep(b); fallCond = jumpWhenTrue ? this.negate(t.identifier(id.name)) : t.identifier(id.name);
+        a = rep(a); b = rep(b); fallCond = jumpWhenTrue ? negate(t.identifier(id.name)) : t.identifier(id.name);
         fall.stmts = fall.stmts.map(rep); other.stmts = other.stmts.map(rep);
       }
       // bookkeeping stores of an idiom lifted inside a branch (iterator registers of a
@@ -1713,7 +1703,7 @@ class Lifter {
 
     // statement form
     this.spillForStatement(state, base.slice(0, common), emit, null);
-    let test = jumpWhenTrue ? this.negate(cond) : cond;
+    let test = jumpWhenTrue ? negate(cond) : cond;
     let thenStmts = fall.stmts;
     let elseStmts = other.stmts;
     // leftover values on branch stacks that are not shared -> statements
@@ -1721,7 +1711,7 @@ class Lifter {
     drain(fall, thenStmts);
     drain(other, elseStmts);
     if (thenStmts.length === 0 && elseStmts.length > 0) {
-      test = this.negate(test);
+      test = negate(test);
       [thenStmts, elseStmts] = [elseStmts, thenStmts];
     }
     if (thenStmts.length === 0 && elseStmts.length === 0) {

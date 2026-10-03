@@ -65,9 +65,19 @@ function identifiersIn(root) {
   return names;
 }
 
+/** `!expr`, simplified where that is exact. (`!(a < b)` is not `a >= b`: both are false
+ *  for NaN, so relational comparisons keep the `!`.) */
+function negate(expr) {
+  if (t.isUnaryExpression(expr, { operator: '!' })) return expr.argument;
+  const inv = t.isBinaryExpression(expr) && { '===': '!==', '!==': '===', '==': '!=', '!=': '==' }[expr.operator];
+  if (inv) return t.binaryExpression(inv, expr.left, expr.right);
+  if (t.isBooleanLiteral(expr)) return t.booleanLiteral(!expr.value);
+  return t.unaryExpression('!', expr);
+}
+
 /** remove a variable declarator, and its declaration when it was the only one */
 function removeDeclarator(p) {
   if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
 }
 
-module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, removeDeclarator };
+module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, removeDeclarator };

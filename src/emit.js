@@ -20,7 +20,7 @@ const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
 const { Lifter, Frame } = require('./lift');
-const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, removeDeclarator } = require('./ast');
+const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, negate, removeDeclarator } = require('./ast');
 
 // output: comments kept, strings with minimal escaping
 const GEN_OPTS = { comments: true, compact: false, jsescOption: { minimal: true } };
@@ -1833,15 +1833,6 @@ function isConstantExpr(e, scope) {
 
 function escapeTemplate(s) {
   return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${').replace(/\r/g, '\\r').replace(/\n/g, '\\n');
-}
-
-function negate(expr) {
-  if (t.isUnaryExpression(expr, { operator: '!' })) return expr.argument;
-  if (t.isBinaryExpression(expr)) {
-    const inv = { '===': '!==', '!==': '===', '==': '!=', '!=': '==', '<': '>=', '>=': '<', '>': '<=', '<=': '>' }[expr.operator];
-    if (inv) return t.binaryExpression(inv, expr.left, expr.right);
-  }
-  return t.unaryExpression('!', expr);
 }
 
 /** `let x;` followed (in the same block) by the first use `x = v;` -> `let x = v;` */
