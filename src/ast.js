@@ -149,4 +149,17 @@ function removeDeclarator(p) {
   if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
 }
 
-module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign, replaceWhere, isArgumentsSlice, hasOwnArguments, isUndef };
+/** Does a predicate hold for some node in `stmts`, not looking into nested functions or classes? */
+function containsOwn(stmts, pred) {
+  return stmts.some((s) => containsNode(s, pred, (n) => t.isFunction(n) || t.isClass(n)));
+}
+
+/** a return statement of this function (returns of nested functions don't count) */
+const containsReturn = (node) => containsOwn([node], (n) => t.isReturnStatement(n));
+
+function referencesThisOrArgs(node) {
+  return containsNode(node, (n) => t.isThisExpression(n) || t.isIdentifier(n, { name: 'arguments' }) || t.isMetaProperty(n),
+    (n) => t.isFunction(n) && !t.isArrowFunctionExpression(n));
+}
+
+module.exports = { containsOwn, containsReturn, referencesThisOrArgs, gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign, replaceWhere, isArgumentsSlice, hasOwnArguments, isUndef };
