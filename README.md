@@ -72,11 +72,11 @@ not needed. Node ≥ 18.
 | step | module | what it does |
 |---|---|---|
 | 0 | `src/normalize.js` | webcrack: string arrays, wrappers, formatting |
-| 1 | `src/locate.js` | find the fetch–decode–execute loop and infer the role of every array (stack, registers, constant pool, …) from its use |
+| 1 | `src/locate/` | find the fetch–decode–execute loop and infer the role of every array (stack, registers, constant pool, …) from its use |
 | 2 | `src/classify.js` | canonicalize each handler and map it to an instruction (about 130 rules plus learned signatures) |
 | 3 | `src/extract.js`, `src/probe.js` | run the build's own loader to obtain the bytecode; explain still-unknown handlers by running one dispatch step |
-| 4 | `src/lift.js` | lift the bytecode with a symbolic operand stack and recover loops, conditionals, `try`, classes and closures |
-| 5 | `src/emit.js` | put the recovered functions back where the host script called them |
+| 4 | `src/lift/` | lift the bytecode with a symbolic operand stack and recover loops, conditionals, `try`, classes and closures |
+| 5 | `src/emit/` | put the recovered functions back where the host script called them, restore private members, parameters and destructuring, clean up |
 
 `src/pipeline.js` ties the steps together and is shared by the CLI (`index.js`) and
 the web build (`web/worker-entry.js`). Nothing about a build is hard-coded: opcode
@@ -119,6 +119,11 @@ is compared with its source `samples/http-client.src.js` instead.
 ```
 index.js            CLI
 src/                decompiler (pipeline.js is the entry point)
+  ast.js            small AST helpers shared by all steps
+  locate/           step 1: interpreter.js (loops, handlers), roles.js, runtime.js (namespace, generators)
+  lift/             step 4: index.js (Lifter, region walker) with the methods by topic:
+                    registers, scopes, stack, control, loops, destructuring, opcodes; nodes.js
+  emit/             step 5: index.js (assembly into the host), private.js, params.js, cleanup.js
 web/                web app sources and browser shims for node:vm / worker_threads
 docs/               built static site (deploy this)
 samples/, corpus/   test inputs (corpus/src: clean sources of the corpus programs)

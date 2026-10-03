@@ -1,5 +1,6 @@
 'use strict';
 /** Human-readable disassembly of extracted programs (debugging aid). */
+const { describeEntry } = require('./probe');
 
 const fmtConst = (c) => {
   if (!c) return '?';
@@ -34,7 +35,7 @@ function disassemble(ex, table) {
       else if (m === 'DECLARE_TDZ') extra = `slot=${operand & 0xffff} name=${operand >>> 16 ? fmtConst(p.consts[(operand >>> 16) - 1]) : '-'}`;
       else if (m === 'BINOP_MEGA') { const sel = (operand ^ e.mask) >>> 0; const l = e.ladder[sel]; extra = l ? `${l.swapped ? '(swapped) ' : ''}${l.op}` : `sel=${sel}?`; }
       else if (m === 'BINOP' || m === 'UNARY') extra = e.op;
-      else if (m === 'TEMPLATE' || m === 'COND_TEMPLATE') extra = require('./probe').describeEntry(e);
+      else if (m === 'TEMPLATE' || m === 'COND_TEMPLATE') extra = describeEntry(e);
       else if (m === 'CALL_IMM') extra = `argc=${fmtConst(p.consts[operand])}`;
       if (e.inferred) extra = `[inferred] ${extra}`;
       if (p.jumps[pc] !== undefined) extra += ` -> ${p.jumps[pc]}`;

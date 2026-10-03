@@ -62,7 +62,7 @@ inferred, never hard-coded:
 * the dispatch structure (one switch with fast paths plus two lazily created
   dispatch functions, or three range-bucketed dispatchers).
 
-## 2. Locating the VM and assigning roles (`locate.js`)
+## 2. Locating the VM and assigning roles (`locate/`)
 
 The interpreter is found by shape: a `while (a < b)` whose body starts with a
 `try` whose block starts with another `while (a < b)` with the same operands.
@@ -139,7 +139,7 @@ left unknown:
 3. **Behavioural inference** (`probe.js`, section 4a) for whatever is still
    unknown.
 
-Role inference in `locate.js` uses the same normal form, so the jump table,
+Role inference in `locate/roles.js` uses the same normal form, so the jump table,
 `new.target` and similar roles are found even when their handlers are
 rewritten.
 
@@ -213,7 +213,7 @@ the VM's own code is executed:
 Programs are enumerated from both loaders and from program objects embedded
 in constant pools. Constants are serialized (nested programs by id).
 
-## 5. Lifting (`lift.js`)
+## 5. Lifting (`lift/`)
 
 Bytecode produced by a compiler from structured source has reducible control
 flow, so a recursive region walk over pc ranges suffices:
@@ -269,7 +269,7 @@ Further details that matter for correctness:
   write become assignment expressions; pushes that read a location written by
   the same instruction are evaluated first).
 
-## 6. Reassembly (`emit.js`)
+## 6. Reassembly (`emit/`)
 
 Calls to the entry function in the host code are located; their arguments are
 classified by shape (`arguments`/array literal, scope object literal, `this`,

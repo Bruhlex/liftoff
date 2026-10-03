@@ -6,6 +6,7 @@
  * in classify.js).
  */
 const t = require('@babel/types');
+const generate = require('@babel/generator').default;
 
 // test polarity: `if (!c) A else B` -> `if (c) B else A`, `a !== b` -> `a === b`, ...
 const INVERT = { '!==': '===', '!=': '==', '>=': '<', '>': '<=' };
@@ -140,7 +141,6 @@ function normalizeStatements(stmts) {
 
 /** After canonical renaming: order the operands of symmetric comparisons. */
 function sortEqualityOperands(stmt) {
-  const generate = require('@babel/generator').default;
   const g = (x) => generate(x, { compact: true }).code;
   t.traverseFast(stmt, (n) => {
     if (t.isBinaryExpression(n) && ['===', '==', '!==', '!='].includes(n.operator)) {
