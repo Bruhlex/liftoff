@@ -1312,11 +1312,13 @@ function cleanup(file) {
  */
 function narrowDeclarations(file) {
   for (let round = 0; round < 50; round++) {
-    let changed = false;
+    // one change per function and traversal: a change leaves that function's scope data stale,
+    // other functions (except those nested in it) are unaffected
+    const touched = new Set();
     traverse.cache.clear();
     traverse(file, {
       VariableDeclarator(p) {
-        if (changed) return;
+        if (p.findParent((x) => x.isFunction() && touched.has(x.node)) || (!p.getFunctionParent() && touched.has(file))) return;
         const n = p.node;
         if (n.init || !t.isIdentifier(n.id) || p.parent.kind !== 'let' || !/^(r\d+|s\d+_\d+|_t\d+)$/.test(n.id.name)) return;
         const name = n.id.name;
@@ -1345,12 +1347,13 @@ function narrowDeclarations(file) {
           replacement = 'for';
         }
         if (!replacement) return;
+        const fn = p.getFunctionParent();
         if (replacement !== 'for') S.replaceWith(replacement);
         if (p.parent.declarations.length === 1) p.parentPath.remove(); else p.remove();
-        changed = true;
+        touched.add(fn ? fn.node : file);
       },
     });
-    if (!changed) break;
+    if (!touched.size) break;
   }
 }
 
@@ -1517,30 +1520,27 @@ function loopCleanup(file) {
  * in the size of large bundles.
  */
 function rewriteBindings(file, action) {
-  let any = false;
-  for (let guard = 0; guard < 5000; guard++) {
-    let changed = false;
-    traverse.cache.clear();
-    nameIndex = new WeakMap();
-    indexedRoots.clear();
-    traverse(file, {
-      Scope(path) {
-        const scope = path.scope;
-        // after a change, re-crawl this scope and continue with its remaining bindings
-        let hit = true;
-        for (let n = 0; hit && n < 5000; n++) {
-          hit = false;
-          for (const name of Object.keys(scope.bindings)) {
-            if (action(scope, name, scope.bindings[name])) { hit = changed = true; scope.crawl(); break; }
-          }
+  // one traversal: a change that enables another one in an already visited scope is picked up by
+  // the next call (the cleanup passes run to a fixpoint)
+  let changed = false;
+  traverse.cache.clear();
+  nameIndex = new WeakMap();
+  indexedRoots.clear();
+  traverse(file, {
+    Scope(path) {
+      const scope = path.scope;
+      // after a change, re-crawl this scope and continue with its remaining bindings
+      let hit = true, here = false;
+      for (let n = 0; hit && n < 5000; n++) {
+        hit = false;
+        for (const name of Object.keys(scope.bindings)) {
+          if (action(scope, name, scope.bindings[name])) { hit = here = changed = true; scope.crawl(); break; }
         }
-        if (changed) path.skip();
-      },
-    });
-    if (!changed) break;
-    any = true;
-  }
-  return any;
+      }
+      if (here) path.skip();
+    },
+  });
+  return changed;
 }
 
 /** the single definition of a synthetic `let` binding: {defPath, expr} or null */
