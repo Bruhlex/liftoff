@@ -9,7 +9,8 @@
 const t = require('@babel/types');
 const traverse = require('@babel/traverse').default;
 const { containsNode, negate, removeDeclarator, referencesThisOrArgs, countIdent: countRefs } = require('../ast');
-const { restoreKeyedDestructuring, argumentsToParams, leadingBareLets, defaultCheck, readsBodyBinding, convertDefaultParams, mergeParamCopy, destructuredParams, objectParams } = require('./params');
+const { argumentsToParams, leadingBareLets, defaultCheck, readsBodyBinding, convertDefaultParams, mergeParamCopy } = require('./params');
+const { restoreKeyedDestructuring, destructuredParams, objectParams } = require('./patterns');
 
 // binary operators with a compound assignment form (`a = a op b` -> `a op= b`)
 const COMPOUND_OPS = new Set(['+', '-', '*', '/', '%', '**', '<<', '>>', '>>>', '&', '|', '^']);
