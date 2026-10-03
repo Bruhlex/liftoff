@@ -21,7 +21,8 @@ const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('../naming');
 const { Lifter, Frame } = require('../lift');
 const { gen, isIdentName, referencesName, staticKey, iife, replaceWhere, isArgumentsSlice, hasOwnArguments, containsOwn, containsReturn, referencesThisOrArgs } = require('../ast');
-const { restorePrivateMembers, foldDerivedFieldInitializers, inlinePrivateComputedKeys } = require('./private');
+const { restorePrivateMembers } = require('./private');
+const { foldDerivedFieldInitializers, inlinePrivateComputedKeys } = require('./fields');
 const { stripIllegalStrict, stripRedundantStrict, cleanup } = require('./cleanup');
 
 // output: comments kept, strings with minimal escaping
