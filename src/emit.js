@@ -417,7 +417,18 @@ function hasEffects(node) {
 
 /** a lowering helper that throws "Cannot read private member ..." (a brand check); the install
  *  of a #method brand ("Cannot install private ...") is a different helper */
-const isBrandCheckFn = (n) => containsNode(n, (x) => t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value));
+const isBrandCheckFn = (n) => {
+  if (!t.isFunction(n) || n.params.length !== 1) return false;
+  // (the message of a class nested in some other function, e.g. a field initializer, does not count)
+  let hit = false;
+  const walk = (x) => {
+    if (!x || typeof x.type !== 'string' || hit || t.isClass(x)) return;
+    if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) { hit = true; return; }
+    for (const k of t.VISITOR_KEYS[x.type] || []) { const v = x[k]; if (Array.isArray(v)) v.forEach(walk); else walk(v); }
+  };
+  walk(n.body);
+  return hit;
+};
 
 /** number of `let x;` declarations without initializer at the start of a body */
 function leadingBareLets(body) {
@@ -956,6 +967,16 @@ function restorePrivateMembers(file, privateSymbols) {
           p.replaceWith(t.binaryExpression('in', t.privateName(t.identifier(privName(inHelpers.get(b.identifier)))), p.node.arguments[0]));
           return;
         }
+      }
+      // a static field initializer called with the private key as receiver
+      // (`static #f = function () { return E; }.call(sym)`): in a field initializer `this` is the
+      // class, so the thunk's value is the initializer itself
+      if (t.isMemberExpression(p.node.callee) && t.isIdentifier(p.node.callee.property, { name: 'call' }) && t.isFunctionExpression(p.node.callee.object) &&
+          p.node.arguments.length === 1 && t.isIdentifier(p.node.arguments[0]) && privateSymbols.has(p.node.arguments[0].name) && p.parentPath.isClassPrivateProperty() && p.node.callee.object.params.length === 0) {
+        const fn = p.node.callee.object;
+        const body = fn.body.body;
+        p.replaceWith(body.length === 1 && t.isReturnStatement(body[0]) ? body[0].argument || t.identifier('undefined') : t.callExpression(t.arrowFunctionExpression([], t.blockStatement(body)), []));
+        return;
       }
       // immediately invoked brand check: (o => SYM in o ? o : {...throws...})(x) / (function (o) {...})(x) -> x
       if (t.isFunction(p.node.callee) && p.node.arguments.length === 1 && p.node.callee.params.length === 1) {

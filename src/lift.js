@@ -2401,7 +2401,9 @@ class Lifter {
         {
           const th = t.thisExpression();
           if (m === 'PUSH_LEXICAL_THIS') th.__lexical = true;
-          if (pc > 0 && this.mnem(state.instrs[pc - 1][0]) === 'SUPER_CALL') th.__superResult = true; // the value of super(...)
+          // after super(...) has run, a `this` is its value (or the initialized `this`), no check
+          if (state.firstSuperCall === undefined) state.firstSuperCall = state.instrs.findIndex(([op]) => this.mnem(op) === 'SUPER_CALL');
+          if (state.firstSuperCall >= 0 && state.firstSuperCall < pc) th.__superResult = true;
           push(th);
         }
         return;
