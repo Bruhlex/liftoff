@@ -56,6 +56,19 @@ function takeLoopBinding(bodyStmts, valueId) {
  *  expressions (the update then cannot be a `for` clause) */
 const updateExpressions = (upd) => [...upd.stmts.map((x) => (t.isExpressionStatement(x) ? x.expression : null)), ...upd.stack.filter((v) => !isPure(v))];
 
+/**
+ * A statement an idiom flagged for removal, or `rN = <literal | identifier>` into a register in
+ * `names` that only carries an idiom's bookkeeping (a done flag, an iterator, a loop index).
+ * `anyValueFor` names a register whose stores are bookkeeping whatever the value.
+ */
+function isBookkeepingStore(s, names, { literalOnly = false, anyValueFor = null } = {}) {
+  if (s.__remove) return true;
+  if (!t.isExpressionStatement(s) || !t.isAssignmentExpression(s.expression) || !t.isIdentifier(s.expression.left)) return false;
+  const name = s.expression.left.name, v = s.expression.right;
+  if (name === anyValueFor) return true;
+  return names.has(name) && (t.isLiteral(v) || (!literalOnly && t.isIdentifier(v)));
+}
+
 /** values left on a lifted range's stack that have effects become statements */
 function drainImpure(res) {
   for (const v of res.stack) if (!isPure(v)) res.stmts.push(t.expressionStatement(v));
@@ -451,7 +464,7 @@ class Lifter {
   /** Drop `rN = <literal>` statements for registers that only carried loop bookkeeping. */
   removeHiddenRegStores(state, stmts) {
     const names = new Set([...state.hiddenRegs].map((r) => this.regName(state, r)));
-    const isHiddenStore = (s) => s.__remove || (t.isExpressionStatement(s) && t.isAssignmentExpression(s.expression) && t.isIdentifier(s.expression.left) && names.has(s.expression.left.name) && (t.isLiteral(s.expression.right) || t.isIdentifier(s.expression.right)));
+    const isHiddenStore = (s) => isBookkeepingStore(s, names);
     const walk = (node) => {
       // nested closures are other programs with their own registers (same names, other variables)
       if (!node || typeof node.type !== 'string' || t.isFunction(node) || t.isClass(node)) return;
@@ -1680,8 +1693,7 @@ class Lifter {
       // bookkeeping stores of an idiom lifted inside a branch (iterator registers of a
       // destructuring) are dropped here, before the branch becomes an expression
       const hidden = new Set([...state.hiddenRegs].map((r) => this.regName(state, r)));
-      const isBookkeeping = (x) => x.__remove || (t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression, { operator: '=' }) &&
-        t.isIdentifier(x.expression.left) && hidden.has(x.expression.left.name) && (t.isLiteral(x.expression.right) || t.isIdentifier(x.expression.right)));
+      const isBookkeeping = (x) => isBookkeepingStore(x, hidden);
       fall.stmts = fall.stmts.filter((x) => !isBookkeeping(x));
       other.stmts = other.stmts.filter((x) => !isBookkeeping(x));
       const exprOnly = (st) => st.every((x) => t.isExpressionStatement(x));
@@ -1972,8 +1984,7 @@ class Lifter {
       // drop the done-flag stores, and the bookkeeping of a nested pattern (`[[a, b]] = x`: the
       // inner iterator init is flagged for removal, its done flag is a hidden register)
       const hiddenNames = new Set([...state.hiddenRegs].map((r) => this.regName(state, r)));
-      const stmts = res.stmts.filter((x) => !(x.__remove || t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression) && t.isIdentifier(x.expression.left) &&
-        (x.expression.left.name === this.regName(state, doneReg) || hiddenNames.has(x.expression.left.name) && t.isLiteral(x.expression.right))));
+      const stmts = res.stmts.filter((x) => !isBookkeepingStore(x, hiddenNames, { literalOnly: true, anyValueFor: this.regName(state, doneReg) }));
       if (res.stack.length) return null;
       if (stmts.length === 0) { elements.push(null); continue; }
       // `[x, ...{}[yield]]`: the code after x's store up to the rest loop computes the rest target
