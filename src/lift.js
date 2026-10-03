@@ -330,6 +330,7 @@ class Frame {
     this.names = new Map(); // slot -> variable name
     this.declared = new Set();
     this.thisSlot = null;
+    this.tdzOnly = new Set(); // slots declared but never initialized: every access throws
     this.external = !!opts.external; // host / parent scope: never declare here
   }
   nameOf(slot, prefix) {
@@ -359,13 +360,18 @@ class Lifter {
       this._superCtorKeys = new Set();
       for (const prog of this.ctx.programsById.values()) {
         prog.instrs.forEach(([op], q) => {
-          if (this.mnem(op) !== 'PUSH_SUPER_CTOR' || !prog.instrs[q + 1] || this.mnem(prog.instrs[q + 1][0]) !== 'GETPROP_NAMED') return;
+          if (this.mnem(op) !== 'PUSH_SUPER_CTOR' || this.mnemAt(prog.instrs, q + 1) !== 'GETPROP_NAMED') return;
           const c = prog.consts[prog.instrs[q + 1][1]];
           if (c && c.t === 'string') this._superCtorKeys.add(c.v);
         });
       }
     }
     return this._superCtorKeys;
+  }
+
+  /** the mnemonic of instruction q of a program (`instrs`), null outside it */
+  mnemAt(instrs, q) {
+    return q >= 0 && q < instrs.length ? this.mnem(instrs[q][0]) : null;
   }
 
   mnem(op) {
@@ -593,6 +599,7 @@ class Lifter {
       }
     });
     state.regLoads = loads; // register -> pcs that read it (also through fused and template ops)
+    state.firstSuperCall = state.instrs.findIndex(([op]) => this.mnem(op) === 'SUPER_CALL');
     state.tempRegs = new Set();
     state.tempWindow = new Map(); // reg -> { stores, effects } between its store and last load
     const STORE_OPS = new Set(['STORE_REG', 'STORE_ARG', 'STORE_LOCAL', 'STORE_LOCAL_CONST', 'STORE_SCOPE', 'STORE_GLOBAL', 'STORE_GLOBAL_DECL', 'REG_INC', 'REG_DEC', 'REG_PREINC', 'REG_PREDEC', 'TEMPLATE']);
@@ -688,19 +695,27 @@ class Lifter {
    * copy of `x` in the head of `for (let x of expr)` that `expr` sees: every access throws.
    */
   tdzOnlySlots(state, root) {
-    const enters = new Set([root]);
-    if (state.frameAlias) for (const [e, r] of state.frameAlias) if (r === root) enters.add(e);
-    const declared = new Set(), stored = new Set();
-    for (let pc = 0; pc < state.instrs.length; pc++) {
-      const st = state.scopeStacks && state.scopeStacks[pc];
-      if (!st || !st.length || !enters.has(st[st.length - 1])) continue;
-      const m = this.mnem(state.instrs[pc][0]), operand = state.instrs[pc][1];
-      if (m === 'DECLARE_TDZ') declared.add(operand & 0xffff);
-      else if (m === 'STORE_LOCAL' || m === 'STORE_LOCAL_CONST' || m === 'BIND_THIS_SLOT') stored.add(operand);
-      else if (m === 'STORE_SCOPE' && operand >>> 16 === 0) stored.add(operand & 0xffff);
-      else if (m === 'TEMPLATE' || m === 'COND_TEMPLATE') return new Set(); // (may write slots)
+    if (!state.tdzScan) {
+      // one pass over the program: per scope (aliased copies of a `for (let ...)` scope count as
+      // one) the slots declared and the slots stored
+      state.tdzScan = new Map();
+      const entry = (e) => {
+        const r = state.frameAlias && state.frameAlias.has(e) ? state.frameAlias.get(e) : e;
+        if (!state.tdzScan.has(r)) state.tdzScan.set(r, { declared: new Set(), stored: new Set(), unknown: false });
+        return state.tdzScan.get(r);
+      };
+      for (let pc = 0; pc < state.instrs.length; pc++) {
+        const st = state.scopeStacks && state.scopeStacks[pc];
+        if (!st || !st.length) continue;
+        const m = this.mnem(state.instrs[pc][0]), operand = state.instrs[pc][1];
+        if (m === 'DECLARE_TDZ') entry(st[st.length - 1]).declared.add(operand & 0xffff);
+        else if (m === 'STORE_LOCAL' || m === 'STORE_LOCAL_CONST' || m === 'BIND_THIS_SLOT') entry(st[st.length - 1]).stored.add(operand);
+        else if (m === 'STORE_SCOPE' && operand >>> 16 === 0) entry(st[st.length - 1]).stored.add(operand & 0xffff);
+        else if (m === 'TEMPLATE' || m === 'COND_TEMPLATE') entry(st[st.length - 1]).unknown = true; // (may write slots)
+      }
     }
-    return new Set([...declared].filter((sl) => !stored.has(sl)));
+    const e = state.tdzScan.get(root);
+    return !e || e.unknown ? new Set() : new Set([...e.declared].filter((sl) => !e.stored.has(sl)));
   }
 
   frameForEnter(state, enterPc) {
@@ -738,7 +753,7 @@ class Lifter {
    */
   computeForLet(state) {
     const { instrs, jumps } = state;
-    const M = (q) => (q >= 0 && q < instrs.length ? this.mnem(instrs[q][0]) : null);
+    const M = (q) => this.mnemAt(instrs, q);
     state.forLet = new Map();
     state.frameAlias = new Map();
     for (const [H, L] of state.loopEnds) {
@@ -1180,7 +1195,7 @@ class Lifter {
         p += 3;
       }
       // for await: LOAD_REG it; ITER_NEXT_CALL; AWAIT; DUP; ITER_RESULT_DONE; JMPT exit; GETPROP "value"
-      const M = (q) => (q < instrs.length ? this.mnem(instrs[q][0]) : null);
+      const M = (q) => this.mnemAt(instrs, q);
       const asyncHead = M(p) === 'LOAD_REG' && state.regIterAsync && state.regIterAsync.has(instrs[p][1]) && M(p + 1) === 'ITER_NEXT_CALL' && M(p + 2) === 'AWAIT' &&
         M(p + 3) === 'DUP' && M(p + 4) === 'ITER_RESULT_DONE' && M(p + 5) === 'JMPT' && M(p + 6) === 'GETPROP_NAMED' && M(L) === 'JMP';
       if ((M(p) === 'FOR_OF_NEXT' || asyncHead) && M(L) === 'JMP') {
@@ -1880,7 +1895,7 @@ class Lifter {
 
   liftArrayDestructure(state, pc, end, inStack, emit) {
     const { instrs, jumps } = state;
-    const M = (q) => (q >= 0 && q < instrs.length ? this.mnem(instrs[q][0]) : null);
+    const M = (q) => this.mnemAt(instrs, q);
     const K = state.prog.consts;
     const isStr = (q, v) => K[instrs[q][1]] && K[instrs[q][1]].v === v;
     // header before TRY_ENTER
@@ -2448,7 +2463,6 @@ class Lifter {
           const th = t.thisExpression();
           if (m === 'PUSH_LEXICAL_THIS') th.__lexical = true;
           // after super(...) has run, a `this` is its value (or the initialized `this`), no check
-          if (state.firstSuperCall === undefined) state.firstSuperCall = state.instrs.findIndex(([op]) => this.mnem(op) === 'SUPER_CALL');
           if (state.firstSuperCall >= 0 && state.firstSuperCall < pc) th.__superResult = true;
           push(th);
         }
@@ -2480,7 +2494,7 @@ class Lifter {
         if (state.brandRegs && state.brandRegs.has(operand)) { const b = t.identifier('__brand'); b.__brandHelper = true; push(b); return; }
         if (state.tempValues.has(operand)) { push(t.cloneNode(state.tempValues.get(operand), true)); return; }
         if (state.iterInit && state.iterInit.has(operand)) { push(this.regId(state, operand)); return; }
-        if (state.regIter.has(operand)) { const it = state.regIter.get(operand); const n = t.identifier(`__iter${operand}`); n.__marker = 'iter'; n.__src = it; n.__reg = operand; push(n); return; }
+        if (state.regIter.has(operand)) { const it = state.regIter.get(operand); const n = t.identifier(`__iter${operand}`); n.__marker = 'iter'; n.__src = it; push(n); return; }
         this.flushAssignmentsTo(state, stack, emit, this.regName(state, operand));
         push(this.regId(state, operand)); return;
       }
@@ -2640,7 +2654,7 @@ class Lifter {
         const frame = this.frameAt(state, depth);
         const n = this.slotName(state, frame, slot);
         // a binding that is never initialized: the read always throws
-        if (frame && frame.tdzOnly && frame.tdzOnly.has(slot)) {
+        if (frame && frame.tdzOnly.has(slot)) {
           const msg = `Cannot access '${t.isIdentifier(n) ? n.name : 'variable'}' before initialization`;
           push(iife([t.throwStatement(t.newExpression(t.identifier('ReferenceError'), [t.stringLiteral(msg)]))]));
           return;
@@ -2843,7 +2857,7 @@ class Lifter {
         pop(); // the callee, always `super`
         if (operand === 1) { push(t.arrayExpression(args)); return; }
         // `super(...)` used as a value (`super[super()]`): SUPER_CALL; PUSH_THIS; <not DROP>
-        const M = (q) => (q < state.instrs.length ? this.mnem(state.instrs[q][0]) : null);
+        const M = (q) => this.mnemAt(state.instrs, q);
         if (M(pc + 1) === 'PUSH_THIS' && M(pc + 2) !== 'DROP' && state.jumps[pc + 1] === undefined) {
           push(t.callExpression(t.super(), args));
           state.skipPushThis = pc + 1;
