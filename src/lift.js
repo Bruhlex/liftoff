@@ -344,6 +344,22 @@ class Lifter {
     this.globalVarDecls = new Set();
   }
 
+  /** names under which the VM keeps the superclass of a class for `super(...)`: the keys read
+   *  right after PUSH_SUPER_CTOR in any program */
+  superCtorKeys() {
+    if (!this._superCtorKeys) {
+      this._superCtorKeys = new Set();
+      for (const prog of this.ctx.programsById.values()) {
+        prog.instrs.forEach(([op], q) => {
+          if (this.mnem(op) !== 'PUSH_SUPER_CTOR' || !prog.instrs[q + 1] || this.mnem(prog.instrs[q + 1][0]) !== 'GETPROP_NAMED') return;
+          const c = prog.consts[prog.instrs[q + 1][1]];
+          if (c && c.t === 'string') this._superCtorKeys.add(c.v);
+        });
+      }
+    }
+    return this._superCtorKeys;
+  }
+
   mnem(op) {
     const e = this.ctx.table.get(op);
     return e ? e.mnemonic : `UNKNOWN_${op}`;
@@ -2482,6 +2498,8 @@ class Lifter {
       case 'DELETE_GLOBAL': push(t.unaryExpression('delete', t.memberExpression(t.identifier('globalThis'), keyConst(operand), true))); return;
       case 'STORE_GLOBAL': case 'STORE_GLOBAL_DECL': {
         const v = pop();
+        // the superclass registered for `super` (read only by the VM): nothing to emit
+        if (K[operand] && K[operand].t === 'string' && this.superCtorKeys().has(K[operand].v)) { push(v); return; }
         if (m === 'STORE_GLOBAL_DECL' && K[operand] && K[operand].t === 'string') this.globalVarDecls.add(K[operand].v);
         push(t.assignmentExpression('=', this.globalRef(K[operand]), v));
         return;
