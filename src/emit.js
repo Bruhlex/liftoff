@@ -20,7 +20,7 @@ const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
 const { Lifter, Frame } = require('./lift');
-const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign } = require('./ast');
+const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign, replaceWhere, isArgumentsSlice, hasOwnArguments, isUndef } = require('./ast');
 
 // output: comments kept, strings with minimal escaping
 const GEN_OPTS = { comments: true, compact: false, jsescOption: { minimal: true } };
@@ -175,25 +175,10 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
         const restIdx = els.findIndex((e) => t.isSpreadElement(e));
         if (restIdx >= 0 && restIdx === els.length - 1 && t.isIdentifier(els[restIdx].argument) && els.slice(0, restIdx).every((e) => t.isIdentifier(e))) {
           const restName = els[restIdx].argument.name;
-          let other = false;
-          const walk = (n, parent, key, idx) => {
-            if (!n || typeof n.type !== 'string') return;
-            if (t.isCallExpression(n) && t.isMemberExpression(n.callee) && t.isIdentifier(n.callee.property, { name: 'call' }) && /slice/.test(gen(n.callee.object)) &&
-                t.isIdentifier(n.arguments[0], { name: 'arguments' }) && t.isNumericLiteral(n.arguments[1], { value: restIdx })) {
-              const rep = t.identifier(restName);
-              if (idx !== undefined) parent[key][idx] = rep; else parent[key] = rep;
-              return;
-            }
-            if (t.isIdentifier(n, { name: 'arguments' })) other = true;
-            for (const k of t.VISITOR_KEYS[n.type] || []) {
-              const v = n[k];
-              if (Array.isArray(v)) v.forEach((c, i) => walk(c, n, k, i));
-              else if (v && typeof v.type === 'string') walk(v, n, k);
-            }
-          };
           const holder = t.blockStatement(lifted.body);
-          walk(holder, null, null);
+          replaceWhere(holder, (x) => isArgumentsSlice(x, restIdx), () => t.identifier(restName), (x) => x !== holder && hasOwnArguments(x));
           lifted.body = holder.body;
+          const other = referencesName(holder, 'arguments');
           if (!other) { lifted.usesArguments = false; }
         }
       }
@@ -421,7 +406,7 @@ function readsBodyBinding(fnPath, expr, own = []) {
 
 /** k for `if (arguments[k] === undefined) ...`, the VM's default check of parameter k; else -1 */
 function argDefaultIndex(st) {
-  if (!t.isIfStatement(st) || !t.isBinaryExpression(st.test, { operator: '===' }) || !t.isIdentifier(st.test.right, { name: 'undefined' })) return -1;
+  if (!t.isIfStatement(st) || !t.isBinaryExpression(st.test, { operator: '===' }) || !isUndef(st.test.right)) return -1;
   const m = st.test.left;
   return t.isMemberExpression(m) && m.computed && t.isIdentifier(m.object, { name: 'arguments' }) && t.isNumericLiteral(m.property) ? m.property.value : -1;
 }
@@ -540,7 +525,7 @@ function readObjectPattern(body, i, src, ctx) {
   const prop = (e) => {
     const k = keyOf(e);
     if (k !== null) return { k, def: null };
-    if (t.isConditionalExpression(e) && t.isBinaryExpression(e.test, { operator: '===' }) && t.isIdentifier(e.test.right, { name: 'undefined' })) {
+    if (t.isConditionalExpression(e) && t.isBinaryExpression(e.test, { operator: '===' }) && isUndef(e.test.right)) {
       const k2 = keyOf(e.test.left);
       if (typeof k2 === 'string' && keyOf(e.alternate) === k2) return { k: k2, def: e.consequent };
     }
@@ -671,7 +656,7 @@ function inlinePrivateComputedKeys(file) {
       const n = p.node;
       if (n.operator !== '=' || !t.isIdentifier(n.left) || !hasPrivate(n.right) || !p.parentPath.isExpressionStatement()) return;
       const b = p.scope.getBinding(n.left.name);
-      if (!b || b.constantViolations.length !== 1 || !b.path.isVariableDeclarator() || (b.path.node.init && !t.isIdentifier(b.path.node.init, { name: 'undefined' }))) return;
+      if (!b || b.constantViolations.length !== 1 || !b.path.isVariableDeclarator() || (b.path.node.init && !isUndef(b.path.node.init))) return;
       if (!inlineInto(b, n.right)) return;
       p.parentPath.remove();
       removeDeclarator(b.path);
@@ -756,7 +741,7 @@ function foldDerivedFieldInitializers(file) {
         // set(v)
         if (t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isIdentifier(st.expression.callee) && setters.has(st.expression.callee.name) && st.expression.arguments.length === 1) {
           const v = st.expression.arguments[0];
-          fields.push(t.classPrivateProperty(t.privateName(t.identifier(setters.get(st.expression.callee.name))), t.isIdentifier(v, { name: 'undefined' }) ? null : v));
+          fields.push(t.classPrivateProperty(t.privateName(t.identifier(setters.get(st.expression.callee.name))), isUndef(v) ? null : v));
           continue;
         }
         // this[__vmwm__$pib_N] = <install brand>: the brand of the class's #methods, implicit in the class
@@ -771,7 +756,7 @@ function foldDerivedFieldInitializers(file) {
             t.isThisExpression(st.expression.left.object)) {
           const l = st.expression.left;
           const v = st.expression.right;
-          fields.push(t.classProperty(l.property, t.isIdentifier(v, { name: 'undefined' }) ? null : v, null, null, l.computed));
+          fields.push(t.classProperty(l.property, isUndef(v) ? null : v, null, null, l.computed));
           continue;
         }
         return; // anything else: leave as it is
@@ -996,7 +981,7 @@ function restorePrivateMembers(file, privateSymbols) {
         // field initializer -> #field = init
         if (t.isClassProperty(m) && k && /^__vmwm__/.test(k)) {
           let init = t.isCallExpression(m.value) && m.value.arguments.length === 1 ? m.value.arguments[0] : null;
-          if (init && t.isIdentifier(init, { name: 'undefined' })) init = null;
+          if (init && isUndef(init)) init = null;
           const key = k.replace(/^__vmwm__/, '');
           out.push(t.classPrivateProperty(t.privateName(t.identifier(privName(key))), init, null, m.static));
           continue;
@@ -1749,7 +1734,7 @@ function convertDefaultParams(file) {
 function defaultCheck(st) {
   if (!t.isIfStatement(st) || st.alternate) return null;
   const test = st.test;
-  if (!t.isBinaryExpression(test, { operator: '===' }) || !t.isIdentifier(test.left) || !t.isIdentifier(test.right, { name: 'undefined' })) return null;
+  if (!t.isBinaryExpression(test, { operator: '===' }) || !t.isIdentifier(test.left) || !isUndef(test.right)) return null;
   const name = test.left.name;
   const cons = t.isBlockStatement(st.consequent) ? st.consequent.body : [st.consequent];
   const isSet = (x) => t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression, { operator: '=' }) && t.isIdentifier(x.expression.left, { name });
@@ -1768,7 +1753,7 @@ function defaultCheck(st) {
 function isInertDefault(e) {
   if (t.isLiteral(e) && !t.isTemplateLiteral(e)) return true;
   if (t.isTemplateLiteral(e)) return e.expressions.length === 0;
-  if (t.isIdentifier(e, { name: 'undefined' })) return true;
+  if (isUndef(e)) return true;
   if (t.isUnaryExpression(e) && (e.operator === '-' || e.operator === '!' || e.operator === 'void')) return isInertDefault(e.argument);
   if (t.isArrayExpression(e)) return e.elements.every((x) => x && isInertDefault(x));
   if (t.isObjectExpression(e)) return e.properties.every((p) => t.isObjectProperty(p) && !p.computed && isInertDefault(p.value));

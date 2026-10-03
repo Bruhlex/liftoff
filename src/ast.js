@@ -77,6 +77,36 @@ const PRIVATE_ERROR = /private (member|method|field)/;
  *  of a #method (`Cannot install private method`) is a different helper */
 const isBrandCheckMessage = (s) => /private (member|method)/.test(s) && !/install private/.test(s);
 
+/** replace every node below `root` that satisfies `pred` by `make(node)` (not looking into
+ *  subtrees whose root satisfies `skip`, nor into replaced nodes); returns how many were replaced */
+function replaceWhere(root, pred, make, skip = null) {
+  let count = 0;
+  const walk = (n) => {
+    if (!n || typeof n.type !== 'string' || (skip && skip(n))) return;
+    for (const k of t.VISITOR_KEYS[n.type] || []) {
+      const v = n[k];
+      if (Array.isArray(v)) v.forEach((c, i) => { if (c && pred(c)) { v[i] = make(c); count++; } else walk(c); });
+      else if (v && typeof v.type === 'string') { if (pred(v)) { n[k] = make(v); count++; } else walk(v); }
+    }
+  };
+  walk(root);
+  return count;
+}
+
+/** `Array.prototype.slice.call(arguments, n)`: how the compiler reads a rest parameter after n
+ *  named ones */
+const isArgumentsSlice = (x, n) => t.isCallExpression(x) && x.arguments.length === 2 && t.isIdentifier(x.arguments[0], { name: 'arguments' }) &&
+  t.isNumericLiteral(x.arguments[1], { value: n }) && t.isMemberExpression(x.callee) && t.isIdentifier(x.callee.property, { name: 'call' }) &&
+  t.isMemberExpression(x.callee.object) && t.isIdentifier(x.callee.object.property, { name: 'slice' }) &&
+  t.isMemberExpression(x.callee.object.object) && t.isIdentifier(x.callee.object.object.property, { name: 'prototype' }) &&
+  t.isIdentifier(x.callee.object.object.object, { name: 'Array' });
+
+/** a function with its own `arguments` (an arrow uses the enclosing one) */
+const hasOwnArguments = (n) => t.isFunction(n) && !t.isArrowFunctionExpression(n);
+
+/** the identifier `undefined` */
+const isUndef = (n) => t.isIdentifier(n, { name: 'undefined' });
+
 /** the names of all identifiers below `root` */
 function identifiersIn(root) {
   const names = new Set();
@@ -119,4 +149,4 @@ function removeDeclarator(p) {
   if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
 }
 
-module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign };
+module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, isBrandCheckMessage, singleDeclarator, plainAssign, replaceWhere, isArgumentsSlice, hasOwnArguments, isUndef };

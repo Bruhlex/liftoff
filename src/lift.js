@@ -35,7 +35,7 @@
  *   __methodKind, __stmtsMark: bookkeeping of single idioms, see where they are set
  */
 const t = require('@babel/types');
-const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR } = require('./ast');
+const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, staticKey, iife, thunkValue, exprStmts, PRIVATE_ERROR, replaceWhere, isArgumentsSlice, hasOwnArguments, isUndef } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
@@ -111,7 +111,6 @@ function templateRegEffects(e, operand) {
   return { reads, writes };
 }
 
-const isUndef = (n) => t.isIdentifier(n, { name: 'undefined' });
 
 /** `root == null ? undefined : root.a.b(c)`  ->  `root?.a.b(c)` (null if expr is not a chain on root) */
 function optionalChain(expr, root) {
@@ -229,7 +228,7 @@ function isPure(node) {
 function isDroppable(node) {
   if (!node || node.__underflow) return true;
   const lit = (n) => t.isNumericLiteral(n) || t.isStringLiteral(n) || t.isBooleanLiteral(n) || t.isNullLiteral(n) || t.isBigIntLiteral(n) ||
-    t.isIdentifier(n, { name: 'undefined' }) || (t.isUnaryExpression(n) && ['-', '+', '!', 'void'].includes(n.operator) && lit(n.argument) && !(n.operator === '+' && hasBigInt(n.argument)));
+    isUndef(n) || (t.isUnaryExpression(n) && ['-', '+', '!', 'void'].includes(n.operator) && lit(n.argument) && !(n.operator === '+' && hasBigInt(n.argument)));
   const hasBigInt = (n) => t.isBigIntLiteral(n) || (t.isUnaryExpression(n) && hasBigInt(n.argument));
   switch (node.type) {
     case 'Identifier':
@@ -290,8 +289,7 @@ function usesArgumentsBeyondSlice(body, n) {
   let all = 0, slices = 0;
   for (const st of body) t.traverseFast(st, (x) => {
     if (t.isIdentifier(x, { name: 'arguments' })) all++;
-    if (t.isCallExpression(x) && t.isMemberExpression(x.callee) && t.isIdentifier(x.callee.property, { name: 'call' }) && x.arguments.length === 2 &&
-        t.isIdentifier(x.arguments[0], { name: 'arguments' }) && t.isNumericLiteral(x.arguments[1], { value: n })) slices++;
+    if (isArgumentsSlice(x, n)) slices++;
   });
   return all > slices;
 }
@@ -468,7 +466,7 @@ class Lifter {
     body.push(...stmts);
     // drop a trailing `return undefined;` / `return;`
     const last = body[body.length - 1];
-    if (t.isReturnStatement(last) && (!last.argument || t.isIdentifier(last.argument, { name: 'undefined' }))) body.pop();
+    if (t.isReturnStatement(last) && (!last.argument || isUndef(last.argument))) body.pop();
     this.active.delete(prog.id);
     return {
       params: state.paramNames.map((n) => t.identifier(n)),
@@ -997,7 +995,7 @@ class Lifter {
       if (m === 'RETURN') {
         const v = this.pop(stack);
         this.spillForStatement(state, stack, emit, null);
-        if (t.isIdentifier(v, { name: 'undefined' })) emit(t.returnStatement());
+        if (isUndef(v)) emit(t.returnStatement());
         else emit(t.returnStatement(v));
         pc++;
         continue;
@@ -2056,7 +2054,7 @@ class Lifter {
       } else if (t.isIdentifier(value, { name: elemId.name })) elements.push(target);
       else if (objPattern(value)) elements.push(objPattern(value));
       else if (t.isConditionalExpression(value) && t.isBinaryExpression(value.test, { operator: '===' }) && t.isIdentifier(value.test.left, { name: elemId.name }) &&
-               t.isIdentifier(value.test.right, { name: 'undefined' }) && t.isIdentifier(value.alternate, { name: elemId.name })) elements.push(t.assignmentPattern(target, value.consequent));
+               isUndef(value.test.right) && t.isIdentifier(value.alternate, { name: elemId.name })) elements.push(t.assignmentPattern(target, value.consequent));
       else return null;
     }
     // (trailing holes stay: `[,] = it` still calls next() once)
@@ -3049,7 +3047,7 @@ class Lifter {
       const cooked = args[0].__templateCooked || args[0].elements;
       const raw = args[0].__templateRaw;
       const exprs = args.slice(1);
-      if (cooked.length === exprs.length + 1 && cooked.every((c) => t.isStringLiteral(c) || t.isIdentifier(c, { name: 'undefined' })) && raw.every((r) => t.isStringLiteral(r))) {
+      if (cooked.length === exprs.length + 1 && cooked.every((c) => t.isStringLiteral(c) || isUndef(c)) && raw.every((r) => t.isStringLiteral(r))) {
         const quasis = raw.map((r, i) => t.templateElement({ raw: r.value, cooked: t.isStringLiteral(cooked[i]) ? cooked[i].value : undefined }, i === raw.length - 1));
         return t.taggedTemplateExpression(callee, t.templateLiteral(quasis, exprs));
       }
@@ -3163,25 +3161,9 @@ class Lifter {
     } else if (lifted.usesArguments && (prog.strict || kind.strict || !usesArgumentsBeyondSlice(body, prog.paramCount))) {
       // (in sloppy functions a rest parameter would unmap `arguments` from the parameters)
       const n = prog.paramCount;
-      const replaceRest = (node, parent, key, idx) => {
-        if (!node || typeof node.type !== 'string') return;
-        if (t.isCallExpression(node) && t.isMemberExpression(node.callee) && t.isIdentifier(node.callee.property, { name: 'call' }) &&
-            t.isMemberExpression(node.callee.object) && t.isIdentifier(node.callee.object.property, { name: 'slice' }) &&
-            t.isMemberExpression(node.callee.object.object) && t.isIdentifier(node.callee.object.object.property, { name: 'prototype' }) && t.isIdentifier(node.callee.object.object.object, { name: 'Array' }) &&
-            node.arguments.length === 2 && t.isIdentifier(node.arguments[0], { name: 'arguments' }) && t.isNumericLiteral(node.arguments[1], { value: n })) {
-          usedRest = true;
-          const rep = t.identifier(restName);
-          if (idx !== undefined) parent[key][idx] = rep; else parent[key] = rep;
-          return;
-        }
-        for (const k of t.VISITOR_KEYS[node.type] || []) {
-          const v = node[k];
-          if (Array.isArray(v)) v.forEach((c, i) => replaceRest(c, node, k, i));
-          else if (v && typeof v.type === 'string') replaceRest(v, node, k);
-        }
-      };
+      // (nested functions with their own `arguments` keep theirs)
       const wrapper = t.blockStatement(body);
-      replaceRest(wrapper, null, null);
+      usedRest = replaceWhere(wrapper, (x) => isArgumentsSlice(x, n), () => t.identifier(restName), (x) => x !== wrapper && hasOwnArguments(x)) > 0;
       body = wrapper.body;
       if (usedRest) params = [...params, t.restElement(t.identifier(restName))];
     }
