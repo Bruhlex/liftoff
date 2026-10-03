@@ -1286,23 +1286,12 @@ function cleanup(file) {
       const body = n.body.body;
       const k = leadingBareLets(body);
       while (body.length > k) {
-        const st = body[k];
-        if (!t.isIfStatement(st) || st.alternate) break;
-        const test = st.test;
-        if (!t.isBinaryExpression(test, { operator: '===' }) || !t.isIdentifier(test.left) || !t.isIdentifier(test.right, { name: 'undefined' })) break;
-        const cons = t.isBlockStatement(st.consequent) ? st.consequent.body : [st.consequent];
-        const isSet = (x) => t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression, { operator: '=' }) && t.isIdentifier(x.expression.left, { name: test.left.name });
-        let value;
-        if (cons.length === 1 && isSet(cons[0])) value = cons[0].expression.right;
-        // `_ = (a = f, b = g)`: expressions before the parameter's own assignment
-        else if (cons.length > 1 && isSet(cons[cons.length - 1]) && cons.slice(0, -1).every((x) => t.isExpressionStatement(x) && !t.isThrowStatement(x)))
-          value = t.sequenceExpression([...cons.slice(0, -1).map((x) => x.expression), cons[cons.length - 1].expression.right]);
-        // a default that reads a later parameter in its TDZ: `{ throw new ReferenceError(..); a = undefined; }`
-        else if (cons.length === 2 && t.isThrowStatement(cons[0]) && isSet(cons[1])) value = t.callExpression(t.arrowFunctionExpression([], t.blockStatement([cons[0]])), []);
-        else break;
-        const pi = n.params.findIndex((p) => t.isIdentifier(p, { name: test.left.name }));
+        const dc = defaultCheck(body[k]);
+        if (!dc) break;
+        const { name, value } = dc;
+        const pi = n.params.findIndex((p) => t.isIdentifier(p, { name }));
         if (pi < 0 || readsBodyBinding(path, value)) break;
-        n.params[pi] = t.assignmentPattern(t.identifier(test.left.name), value);
+        n.params[pi] = t.assignmentPattern(t.identifier(name), value);
         body.splice(k, 1);
       }
     },
@@ -1361,8 +1350,8 @@ function cleanup(file) {
         const b = bodyPath.scope.getBinding(nm);
         if (!b || b.kind !== 'let' || !b.path.isVariableDeclarator() || b.path.node.init) return;
         const inside = (q) => q.findParent((x) => x === bodyPath) !== null;
-        if (!b.referencePaths.every(inside) || !b.constantViolations.every((q) => q.node === first.expression || inside(q))) return;
-        if (b.constantViolations.some((q) => q.node !== first.expression)) return; // reassigned in the body: keep `let`
+        // (a binding reassigned in the body keeps its `let`)
+        if (!b.referencePaths.every(inside) || b.constantViolations.some((q) => q.node !== first.expression)) return;
       }
       for (const nm of names) {
         const b = bodyPath.scope.getBinding(nm);
@@ -1801,9 +1790,17 @@ function defaultCheck(st) {
   if (!t.isIfStatement(st) || st.alternate) return null;
   const test = st.test;
   if (!t.isBinaryExpression(test, { operator: '===' }) || !t.isIdentifier(test.left) || !t.isIdentifier(test.right, { name: 'undefined' })) return null;
+  const name = test.left.name;
   const cons = t.isBlockStatement(st.consequent) ? st.consequent.body : [st.consequent];
-  if (cons.length !== 1 || !t.isExpressionStatement(cons[0]) || !t.isAssignmentExpression(cons[0].expression, { operator: '=' }) || !t.isIdentifier(cons[0].expression.left, { name: test.left.name })) return null;
-  return { name: test.left.name, value: cons[0].expression.right };
+  const isSet = (x) => t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression, { operator: '=' }) && t.isIdentifier(x.expression.left, { name });
+  const last = cons[cons.length - 1];
+  if (!last || !isSet(last)) return null;
+  if (cons.length === 1) return { name, value: last.expression.right };
+  // a default that reads a later parameter in its TDZ: `{ throw new ReferenceError(..); a = undefined; }`
+  if (cons.length === 2 && t.isThrowStatement(cons[0])) return { name, value: t.callExpression(t.arrowFunctionExpression([], t.blockStatement([cons[0]])), []) };
+  // `_ = (a = f, b = g)`: expressions before the parameter's own assignment
+  if (cons.slice(0, -1).every((x) => t.isExpressionStatement(x))) return { name, value: t.sequenceExpression([...cons.slice(0, -1).map((x) => x.expression), last.expression.right]) };
+  return null;
 }
 
 /** literal-like default values whose evaluation time cannot be observed */
