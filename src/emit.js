@@ -20,7 +20,7 @@ const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
 const { gen } = require('./locate');
-const { Lifter, Frame, isIdentName } = require('./lift');
+const { Lifter, Frame, isIdentName, referencesName } = require('./lift');
 
 // ---------------------------------------------------------------------------
 // host analysis
@@ -400,6 +400,95 @@ function containsOwn(stmts, pred) {
 // the members are restored as `#field_N` / `#method_N`.
 // ---------------------------------------------------------------------------
 
+/** does an expression moved into the parameter list read a binding of the function body? (the
+ *  parameter scope does not see those) */
+function readsBodyBinding(fnPath, expr, own = []) {
+  let hit = false;
+  t.traverseFast(expr, (x) => {
+    if (hit || !t.isIdentifier(x) || own.includes(x.name)) return;
+    const b = fnPath.scope.getBinding(x.name);
+    if (b && b.scope === fnPath.scope && b.kind !== 'param') hit = true;
+  });
+  return hit;
+}
+
+/**
+ * A parameter with a default does not count in the function's `length`, so the VM program has
+ * fewer parameters than the source and reads the rest as `arguments[i]`:
+ *   function* (a0) { if (arguments[1] === undefined) { arguments[1] = X; } ... arguments[1] ... }
+ * becomes `function* (a0, a1 = X) { ... a1 ... }`. For a generator this matters: its parameter
+ * defaults are evaluated by the call, its body only by the first `next()`.
+ */
+function argumentsToParams(path) {
+  const n = path.node;
+  if (t.isArrowFunctionExpression(n) || !n.params.every((p) => t.isIdentifier(p))) return;
+  const P = n.params.length;
+  const uses = [];
+  let other = false;
+  const visit = (node, parent) => {
+    if (!node || typeof node.type !== 'string' || other) return;
+    if (node !== n && t.isFunction(node) && !t.isArrowFunctionExpression(node)) return;
+    if (t.isIdentifier(node, { name: 'arguments' })) {
+      if (t.isMemberExpression(parent) && parent.object === node && parent.computed && t.isNumericLiteral(parent.property) && Number.isInteger(parent.property.value)) uses.push(parent);
+      else other = true;
+      return;
+    }
+    for (const k of t.VISITOR_KEYS[node.type] || []) {
+      const v = node[k];
+      if (Array.isArray(v)) v.forEach((c) => visit(c, node)); else visit(v, node);
+    }
+  };
+  visit(n.body, null);
+  if (other || !uses.length) return;
+  // the first missing parameter must get a default, or the `length` would grow
+  const first = n.body.body[0];
+  const isDefaultOf = (st, i) => t.isIfStatement(st) && t.isBinaryExpression(st.test, { operator: '===' }) && t.isMemberExpression(st.test.left) &&
+    t.isIdentifier(st.test.left.object, { name: 'arguments' }) && t.isNumericLiteral(st.test.left.property, { value: i }) && t.isIdentifier(st.test.right, { name: 'undefined' });
+  if (!isDefaultOf(first, P)) return;
+  if (uses.some((u) => t.isUnaryExpression(u, { operator: 'delete' }))) return;
+  const max = Math.max(...uses.map((u) => u.property.value));
+  const names = n.params.map((p) => p.name);
+  for (let i = P; i <= max; i++) {
+    let nm = `a${i}`;
+    while (path.scope.hasBinding(nm) || path.scope.hasGlobal(nm) || names.includes(nm)) nm = '_' + nm;
+    names.push(nm);
+  }
+  for (const u of new Set(uses)) { const id = t.identifier(names[u.property.value]); delete u.computed; Object.assign(u, id); for (const k of ['object', 'property', 'optional']) delete u[k]; }
+  n.params = names.map((nm) => t.identifier(nm));
+  path.scope.crawl();
+}
+
+/** `(a0) => { let r = a0; [r, ...] = a0; ... }` -> `([r, ...]) => { ... }` */
+function destructuredParams(path) {
+  const n = path.node;
+  const body = n.body.body;
+  let i = 0;
+  const declared = new Map(); // name -> declarator
+  let src = null;
+  while (i < body.length && t.isVariableDeclaration(body[i], { kind: 'let' })) {
+    for (const d of body[i].declarations) {
+      if (!t.isIdentifier(d.id)) return;
+      if (d.init) { if (!t.isIdentifier(d.init) || (src && d.init.name !== src)) return; src = d.init.name; }
+      declared.set(d.id.name, d);
+    }
+    i++;
+  }
+  const st = body[i];
+  if (!src || !st || !t.isExpressionStatement(st) || !t.isAssignmentExpression(st.expression, { operator: '=' }) ||
+      !(t.isArrayPattern(st.expression.left) || t.isObjectPattern(st.expression.left)) || !t.isIdentifier(st.expression.right, { name: src })) return;
+  const pi = n.params.findIndex((p) => t.isIdentifier(p, { name: src }));
+  if (pi < 0) return;
+  const pat = st.expression.left;
+  const bound = Object.keys(t.getBindingIdentifiers(pat));
+  if (bound.length !== declared.size || !bound.every((x) => declared.has(x))) return;
+  if (body.slice(i + 1).some((x) => referencesName(x, src))) return;
+  if (referencesName(n.body, 'arguments') || readsBodyBinding(path, pat, bound)) return;
+  // defaults inside the pattern may only read parameters and outer bindings
+  n.params[pi] = pat;
+  body.splice(0, i + 1);
+  path.scope.crawl();
+}
+
 /**
  * Instance fields of a derived class are initialized after `super()` by a function the compiler
  * creates outside the class and the constructor calls as `init.call(this)`:
@@ -414,13 +503,15 @@ function foldDerivedFieldInitializers(file) {
   traverse.cache.clear();
   traverse(file, {
     Class(cp) {
-      if (!cp.node.superClass) return;
       const body = cp.node.body.body;
       const ctor = body.find((m) => t.isClassMethod(m, { kind: 'constructor' }));
       if (!ctor) return;
       const stmts = ctor.body.body;
-      const superIdx = stmts.findIndex((st) => t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isSuper(st.expression.callee));
-      if (superIdx < 0) return;
+      // a base class runs its initializer first, a derived class right after super()
+      const superIdx = cp.node.superClass
+        ? stmts.findIndex((st) => t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isSuper(st.expression.callee))
+        : -1;
+      if (cp.node.superClass && superIdx < 0) return;
       const callSt = stmts[superIdx + 1];
       const call = callSt && t.isExpressionStatement(callSt) && t.isCallExpression(callSt.expression) ? callSt.expression : null;
       if (!call || !t.isMemberExpression(call.callee) || !t.isIdentifier(call.callee.property, { name: 'call' }) || !t.isIdentifier(call.callee.object) ||
@@ -434,6 +525,7 @@ function foldDerivedFieldInitializers(file) {
         t.isCallExpression(st.expression.left) && t.isMemberExpression(st.expression.left.callee) && t.isIdentifier(st.expression.left.callee.property, { name: 'has' });
       const setters = new Map(); // arrow name -> private name
       const fields = [];
+      const brandKeys = []; // `const k = "__vmwm__$pib_N"` naming the brand slot
       for (const st of fn.body.body) {
         if (isBrand(st)) continue;
         // `let set;` declared ahead of its assignment
@@ -467,7 +559,7 @@ function foldDerivedFieldInitializers(file) {
             t.isThisExpression(st.expression.left.object) && st.expression.left.computed) {
           let install = false;
           t.traverseFast(st.expression.right, (x) => { if (t.isStringLiteral(x) && /install private/.test(x.value)) install = true; });
-          if (install) continue;
+          if (install) { if (t.isIdentifier(st.expression.left.property)) brandKeys.push(st.expression.left.property.name); continue; }
         }
         // this.p = w
         if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isMemberExpression(st.expression.left) &&
@@ -483,6 +575,13 @@ function foldDerivedFieldInitializers(file) {
       cp.node.body.body = [...fields, ...body];
       stmts.splice(superIdx + 1, 1);
       b.path.remove();
+      for (const k of brandKeys) {
+        const kb = cp.scope.getBinding(k);
+        if (kb && !kb.constantViolations.length && kb.path.isVariableDeclarator() && t.isStringLiteral(kb.path.node.init) && /^__vmwm__\$pib_/.test(kb.path.node.init.value)) {
+          const rest = kb.referencePaths.filter((r) => !r.findParent((x) => x.node === fn));
+          if (!rest.length) kb.path.remove();
+        }
+      }
     },
   });
 }
@@ -892,9 +991,10 @@ function cleanup(file) {
       }
     },
     Function(path) {
-      // default parameters: `if (a === undefined) { a = X; }` at the start of the body
       const n = path.node;
       if (!t.isBlockStatement(n.body)) return;
+      argumentsToParams(path);
+      // default parameters: `if (a === undefined) { a = X; }` at the start of the body
       const body = n.body.body;
       while (body.length) {
         const st = body[0];
@@ -902,10 +1002,15 @@ function cleanup(file) {
         const test = st.test;
         if (!t.isBinaryExpression(test, { operator: '===' }) || !t.isIdentifier(test.left) || !t.isIdentifier(test.right, { name: 'undefined' })) break;
         const cons = t.isBlockStatement(st.consequent) ? st.consequent.body : [st.consequent];
-        if (cons.length !== 1 || !t.isExpressionStatement(cons[0]) || !t.isAssignmentExpression(cons[0].expression, { operator: '=' }) || !t.isIdentifier(cons[0].expression.left, { name: test.left.name })) break;
+        const isSet = (x) => t.isExpressionStatement(x) && t.isAssignmentExpression(x.expression, { operator: '=' }) && t.isIdentifier(x.expression.left, { name: test.left.name });
+        let value;
+        if (cons.length === 1 && isSet(cons[0])) value = cons[0].expression.right;
+        // a default that reads a later parameter in its TDZ: `{ throw new ReferenceError(..); a = undefined; }`
+        else if (cons.length === 2 && t.isThrowStatement(cons[0]) && isSet(cons[1])) value = t.callExpression(t.arrowFunctionExpression([], t.blockStatement([cons[0]])), []);
+        else break;
         const pi = n.params.findIndex((p) => t.isIdentifier(p, { name: test.left.name }));
-        if (pi < 0) break;
-        n.params[pi] = t.assignmentPattern(t.identifier(test.left.name), cons[0].expression.right);
+        if (pi < 0 || readsBodyBinding(path, value)) break;
+        n.params[pi] = t.assignmentPattern(t.identifier(test.left.name), value);
         body.shift();
       }
     },
@@ -926,6 +1031,9 @@ function cleanup(file) {
   rewriteBindings(file, functionHolderBinding);
 
   paramPasses();
+  // destructured parameters, once the register copies are merged into `let r = a0;`
+  traverse.cache.clear();
+  traverse(file, { Function(p) { if (t.isBlockStatement(p.node.body)) destructuredParams(p); } });
   // pass F: `() => { return x; }` -> `() => x`
   traverse.cache.clear();
   traverse(file, {

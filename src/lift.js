@@ -175,15 +175,46 @@ function isPure(node) {
   }
 }
 
-/** may a value be discarded without evaluating it? Like isPure, but a property read can run a
- *  getter or proxy trap, so an expression statement `obj.prop;` / `void obj.prop;` is kept */
+/** may a value be discarded without evaluating it? Only when evaluating it can neither throw nor
+ *  run user code: a property read can run a getter, an unknown global read throws, `in` and
+ *  `instanceof` throw on primitives and arithmetic on an object calls its `valueOf`. So
+ *  `obj.prop;`, `void x;` or `1 != y;` are kept. */
 function isDroppable(node) {
-  if (!node) return true;
-  // (a DUP'd member read that is dropped is a compiler artifact, e.g. the `this` of `a.b?.()`)
-  let n = node;
-  if (t.isUnaryExpression(n, { operator: 'void' })) n = n.argument;
-  if ((t.isMemberExpression(n) || t.isOptionalMemberExpression(n)) && !n.__dup) return false;
-  return isPure(node);
+  if (!node || node.__underflow) return true;
+  const lit = (n) => t.isNumericLiteral(n) || t.isStringLiteral(n) || t.isBooleanLiteral(n) || t.isNullLiteral(n) || t.isBigIntLiteral(n) ||
+    t.isIdentifier(n, { name: 'undefined' }) || (t.isUnaryExpression(n) && ['-', '+', '!', 'void'].includes(n.operator) && lit(n.argument));
+  switch (node.type) {
+    case 'Identifier':
+      return !(node.__global && !(node.name in globalThis));
+    case 'NumericLiteral': case 'StringLiteral': case 'BooleanLiteral': case 'NullLiteral': case 'BigIntLiteral': case 'RegExpLiteral':
+    case 'ThisExpression': case 'Super': case 'MetaProperty': case 'FunctionExpression': case 'ArrowFunctionExpression':
+      return true;
+    case 'MemberExpression': case 'OptionalMemberExpression':
+      // (a DUP'd member read that is dropped is a compiler artifact, e.g. the `this` of `a.b?.()`)
+      return !!node.__dup && isPure(node);
+    case 'UnaryExpression':
+      if (node.operator === 'delete') return false;
+      if (node.operator === 'typeof' && t.isIdentifier(node.argument)) return true;
+      if (node.operator === 'void' || node.operator === '!' || node.operator === 'typeof') return isDroppable(node.argument);
+      return lit(node.argument);
+    case 'BinaryExpression':
+      if (node.operator === '===' || node.operator === '!==') return isDroppable(node.left) && isDroppable(node.right);
+      if (node.operator === 'in' || node.operator === 'instanceof') return false;
+      return lit(node.left) && lit(node.right) && (!t.isBigIntLiteral(node.left) === !t.isBigIntLiteral(node.right));
+    case 'LogicalExpression':
+      return isDroppable(node.left) && isDroppable(node.right);
+    case 'ConditionalExpression':
+      return isDroppable(node.test) && isDroppable(node.consequent) && isDroppable(node.alternate);
+    case 'SequenceExpression':
+      return node.expressions.every(isDroppable);
+    case 'ArrayExpression': case 'ObjectExpression':
+      // (a dropped literal is the right side of a destructuring assignment, `[a, b] = [b, a]`)
+      return isPure(node);
+    case 'TemplateLiteral':
+      return node.expressions.every(lit);
+    default:
+      return false;
+  }
 }
 
 /** `function (k) { let o = {}; o[k] = 0; return k; }`: the lowering's property-key helper, an identity */
@@ -1053,7 +1084,7 @@ class Lifter {
     // ---- for..in idiom ---------------------------------------------------
     // H: LOAD_REG i ; LOAD_REG keys ; GETPROP_NAMED length ; BINOP < ; JMPF exit ; LOAD_REG keys; LOAD_REG i; GETPROP_COMPUTED; DUP; LOAD obj; IN_SAFE; JMPF skip; STORE x; body; skip: DROP; i++ ; JMP H
     {
-      const seq = (pcs) => pcs.map((q) => this.mnem(instrs[q][0]));
+      const seq = (pcs) => pcs.map((q) => (instrs[q] ? this.mnem(instrs[q][0]) : ''));
       // a block-scoped loop variable captured by a closure adds `PUSH_SCOPE; ENTER_SCOPE` (d = 2)
       const d = seq([H + 5, H + 6]).join() === 'PUSH_SCOPE,ENTER_SCOPE' ? 2 : 0;
       if (L - H > 10 && seq([H, H + 1, H + 2]).join() === 'LOAD_REG,LOAD_REG,GETPROP_NAMED' && state.regForIn.has(instrs[H + 1][1]) && NUM_JUMP.has(this.mnem(instrs[H + 4][0])) &&
@@ -2171,8 +2202,7 @@ class Lifter {
       case 'DROP': {
         if (state.skipNextDrop) { state.skipNextDrop = false; return; }
         const v = pop();
-        const unknownGlobal = v && v.__global && t.isIdentifier(v) && !(v.name in globalThis); // a read that can throw
-        if (!stack.includes(v) && !(state.alive && state.alive.has(v)) && (!isDroppable(v) || unknownGlobal)) this.emitStatement(state, stack, emit, t.expressionStatement(v));
+        if (!stack.includes(v) && !(state.alive && state.alive.has(v)) && !isDroppable(v)) this.emitStatement(state, stack, emit, t.expressionStatement(v));
         return;
       }
       case 'SWAP': { const a = pop(), b = pop(); push(a); push(b); return; }
@@ -2858,4 +2888,4 @@ class Lifter {
   }
 }
 
-module.exports = { Lifter, Frame, isPure, isIdentName, constNode };
+module.exports = { Lifter, Frame, isPure, isIdentName, constNode, referencesName };
