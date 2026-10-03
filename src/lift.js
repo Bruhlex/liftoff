@@ -18,7 +18,7 @@
  * recursively and inlined at their MAKE_CLOSURE site.
  */
 const t = require('@babel/types');
-const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate } = require('./ast');
+const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, staticKey, iife, thunkValue, exprStmts } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
@@ -291,9 +291,7 @@ function assignedProps(stmt) {
   const props = new Set();
   const note = (m) => {
     if (!t.isMemberExpression(m) && !t.isOptionalMemberExpression(m)) return;
-    if (!m.computed && t.isIdentifier(m.property)) props.add(m.property.name);
-    else if (t.isStringLiteral(m.property)) props.add(m.property.value);
-    else props.add('*');
+    props.add(staticKey(m) ?? '*');
   };
   t.traverseFast(stmt, (n) => {
     if (t.isAssignmentExpression(n)) note(n.left);
@@ -309,7 +307,7 @@ function readsProps(v, props) {
   t.traverseFast(v, (n) => {
     if (hit || (!t.isMemberExpression(n) && !t.isOptionalMemberExpression(n))) return;
     if (props.has('*')) { hit = true; return; }
-    const name = !n.computed && t.isIdentifier(n.property) ? n.property.name : t.isStringLiteral(n.property) ? n.property.value : null;
+    const name = staticKey(n);
     if (name === null || props.has(name)) hit = true;
   });
   return hit;
@@ -2652,7 +2650,7 @@ class Lifter {
         // a binding that is never initialized: the read always throws
         if (frame && frame.tdzOnly && frame.tdzOnly.has(slot)) {
           const msg = `Cannot access '${t.isIdentifier(n) ? n.name : 'variable'}' before initialization`;
-          push(t.callExpression(t.arrowFunctionExpression([], t.blockStatement([t.throwStatement(t.newExpression(t.identifier('ReferenceError'), [t.stringLiteral(msg)]))])), []));
+          push(iife([t.throwStatement(t.newExpression(t.identifier('ReferenceError'), [t.stringLiteral(msg)]))]));
           return;
         }
         if (t.isIdentifier(n)) { this.flushAssignmentsTo(state, stack, emit, n.name); n.__scopeRef = true; }
@@ -3061,11 +3059,7 @@ class Lifter {
         // `static x = <expr>` compiles to a thunk run with the class as `this`: the field takes
         // the static block's place, with the thunk's return value as initializer
         const block = value.__staticInit;
-        const body = block.body;
-        const init = body.length === 1 && t.isReturnStatement(body[0])
-          ? body[0].argument || t.identifier('undefined')
-          : t.callExpression(t.arrowFunctionExpression([], t.blockStatement(body)), []);
-        obj.body.body.splice(obj.body.body.indexOf(block), 1, t.classProperty(pk.key, init, null, null, pk.computed, isStatic));
+        obj.body.body.splice(obj.body.body.indexOf(block), 1, t.classProperty(pk.key, thunkValue(block.body), null, null, pk.computed, isStatic));
       } else {
         obj.body.body.push(t.classProperty(pk.key, value, null, null, pk.computed, isStatic));
       }

@@ -20,7 +20,7 @@ const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
 const { Lifter, Frame } = require('./lift');
-const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, negate, removeDeclarator } = require('./ast');
+const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, negate, removeDeclarator, staticKey, iife, thunkValue, exprStmts } = require('./ast');
 
 // output: comments kept, strings with minimal escaping
 const GEN_OPTS = { comments: true, compact: false, jsescOption: { minimal: true } };
@@ -125,7 +125,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
     t.traverseFast(st, (n) => {
       if (t.isAssignmentExpression(n, { operator: '=' }) && t.isMemberExpression(n.left) && t.isIdentifier(n.left.object, { name: nsName }) &&
           t.isCallExpression(n.right) && t.isIdentifier(n.right.callee, { name: 'Symbol' }) && n.right.arguments.length === 0) {
-        const key = n.left.computed ? (t.isStringLiteral(n.left.property) ? n.left.property.value : null) : n.left.property.name;
+        const key = staticKey(n.left);
         if (key) privateSymbols.add(key);
       }
     });
@@ -228,7 +228,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
         body.splice(idx, 1, ...liftedStmts.filter((s) => !(t.isReturnStatement(s) && !s.argument)));
       } else {
         // the call is nested in an expression: keep it as an immediately-invoked arrow
-        path.replaceWith(t.callExpression(t.arrowFunctionExpression([], t.blockStatement(liftedStmts)), []));
+        path.replaceWith(iife(liftedStmts));
       }
       if (fn.generator || containsOwn(liftedStmts, (n) => t.isYieldExpression(n))) fnNode.generator = true;
       if (fn.async || containsOwn(liftedStmts, (n) => t.isAwaitExpression(n) || t.isForOfStatement(n) && n.await)) fnNode.async = true;
@@ -252,8 +252,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   const isEntry = (n) => t.isIdentifier(n, { name: entryName });
   // a member chain on the namespace is bookkeeping unless it goes through a user binding the
   // namespace carries (`NS.vault.locked = true` is the program's own `vault.locked = true`)
-  const memberKey = (n) => (n.computed ? (t.isStringLiteral(n.property) ? n.property.value : null) : n.property.name);
-  const userBinding = (n) => t.isMemberExpression(n) && isNS(n.object) && (() => { const k = memberKey(n); return k !== null && isIdentName(k) && !/^_\$/.test(k); })();
+  const userBinding = (n) => t.isMemberExpression(n) && isNS(n.object) && (() => { const k = staticKey(n); return k !== null && isIdentName(k) && !/^_\$/.test(k); })();
   const onNS = (n) => (t.isMemberExpression(n) && (isNS(n.object) || (onNS(n.object) && !userBinding(n.object)) || isEntry(n.object) || t.isIdentifier(n.object, { name: 'globalThis' })));
   const isBoilerExpr = (e) => {
     if (t.isSequenceExpression(e)) return e.expressions.every(isBoilerExpr);
@@ -277,7 +276,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
     const exprs = t.isExpressionStatement(st) ? (t.isSequenceExpression(st.expression) ? st.expression.expressions : [st.expression]) : [];
     for (const e of exprs) {
       if (!t.isAssignmentExpression(e, { operator: '=' }) || !t.isMemberExpression(e.left) || !isNS(e.left.object) || !t.isIdentifier(e.right)) continue;
-      const key = e.left.computed ? (t.isStringLiteral(e.left.property) ? e.left.property.value : null) : e.left.property.name;
+      const key = staticKey(e.left);
       if (key && isIdentName(key) && key !== e.right.name && e.right.name !== nsName) exportNames.set(e.right.name, key);
     }
   }
@@ -297,7 +296,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
     MemberExpression(p) {
       const n = p.node;
       if (!isNS(n.object)) return;
-      const key = n.computed ? (t.isStringLiteral(n.property) ? n.property.value : null) : n.property.name;
+      const key = staticKey(n);
       if (key && isIdentName(key)) p.replaceWith(t.identifier(key));
     },
   });
@@ -380,19 +379,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
 
 /** Does a predicate hold for some node in `stmts`, not looking into nested functions or classes? */
 function containsOwn(stmts, pred) {
-  let hit = false;
-  const walk = (n) => {
-    if (!n || typeof n.type !== 'string' || hit) return;
-    if (t.isFunction(n) || t.isClass(n)) return;
-    if (pred(n)) { hit = true; return; }
-    for (const k of t.VISITOR_KEYS[n.type] || []) {
-      const v = n[k];
-      if (Array.isArray(v)) v.forEach(walk);
-      else if (v && typeof v.type === 'string') walk(v);
-    }
-  };
-  stmts.forEach(walk);
-  return hit;
+  return stmts.some((s) => containsNode(s, pred, (n) => t.isFunction(n) || t.isClass(n)));
 }
 
 // ---------------------------------------------------------------------------
@@ -414,18 +401,9 @@ function hasEffects(node) {
 
 /** a lowering helper that throws "Cannot read private member ..." (a brand check); the install
  *  of a #method brand ("Cannot install private ...") is a different helper */
-const isBrandCheckFn = (n) => {
-  if (!t.isFunction(n) || n.params.length !== 1) return false;
+const isBrandCheckFn = (n) => t.isFunction(n) && n.params.length === 1 &&
   // (the message of a class nested in some other function, e.g. a field initializer, does not count)
-  let hit = false;
-  const walk = (x) => {
-    if (!x || typeof x.type !== 'string' || hit || t.isClass(x)) return;
-    if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) { hit = true; return; }
-    for (const k of t.VISITOR_KEYS[x.type] || []) { const v = x[k]; if (Array.isArray(v)) v.forEach(walk); else walk(v); }
-  };
-  walk(n.body);
-  return hit;
-};
+  containsNode(n.body, (x) => t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value), (x) => t.isClass(x));
 
 /** number of `let x;` declarations without initializer at the start of a body */
 function leadingBareLets(body) {
@@ -970,9 +948,7 @@ function restorePrivateMembers(file, privateSymbols) {
       // class, so the thunk's value is the initializer itself
       if (t.isMemberExpression(p.node.callee) && t.isIdentifier(p.node.callee.property, { name: 'call' }) && t.isFunctionExpression(p.node.callee.object) &&
           p.node.arguments.length === 1 && t.isIdentifier(p.node.arguments[0]) && privateSymbols.has(p.node.arguments[0].name) && p.parentPath.isClassPrivateProperty() && p.node.callee.object.params.length === 0) {
-        const fn = p.node.callee.object;
-        const body = fn.body.body;
-        p.replaceWith(body.length === 1 && t.isReturnStatement(body[0]) ? body[0].argument || t.identifier('undefined') : t.callExpression(t.arrowFunctionExpression([], t.blockStatement(body)), []));
+        p.replaceWith(thunkValue(p.node.callee.object.body.body));
         return;
       }
       // immediately invoked brand check: (o => SYM in o ? o : {...throws...})(x) / (function (o) {...})(x) -> x
@@ -996,7 +972,7 @@ function restorePrivateMembers(file, privateSymbols) {
         // C.<wm>.get(obj).key  ->  obj.#field
         const obj = storeOf(n.object);
         if (obj) {
-          const key = !n.computed && t.isIdentifier(n.property) ? n.property.name : t.isStringLiteral(n.property) ? n.property.value : null;
+          const key = staticKey(n);
           if (key) { p.replaceWith(t.memberExpression(obj, t.privateName(t.identifier(privName(key))))); return; }
         }
         // obj[sym] -> obj.#method
@@ -1134,19 +1110,8 @@ function restoreKeyedDestructuring(body) {
 const containsReturn = (node) => containsOwn([node], (n) => t.isReturnStatement(n));
 
 function referencesThisOrArgs(node) {
-  let hit = false;
-  const walk = (n) => {
-    if (!n || typeof n.type !== 'string' || hit) return;
-    if (t.isFunctionExpression(n) || t.isFunctionDeclaration(n) || t.isObjectMethod(n) || t.isClassMethod(n)) return;
-    if (t.isThisExpression(n) || t.isIdentifier(n, { name: 'arguments' }) || t.isMetaProperty(n)) { hit = true; return; }
-    for (const k of t.VISITOR_KEYS[n.type] || []) {
-      const v = n[k];
-      if (Array.isArray(v)) v.forEach(walk);
-      else if (v && typeof v.type === 'string') walk(v);
-    }
-  };
-  walk(node);
-  return hit;
+  return containsNode(node, (n) => t.isThisExpression(n) || t.isIdentifier(n, { name: 'arguments' }) || t.isMetaProperty(n),
+    (n) => t.isFunction(n) && !t.isArrowFunctionExpression(n));
 }
 
 // ---------------------------------------------------------------------------
@@ -1794,7 +1759,7 @@ function defaultCheck(st) {
   if (!last || !isSet(last)) return null;
   if (cons.length === 1) return { name, value: last.expression.right };
   // a default that reads a later parameter in its TDZ: `{ throw new ReferenceError(..); a = undefined; }`
-  if (cons.length === 2 && t.isThrowStatement(cons[0])) return { name, value: t.callExpression(t.arrowFunctionExpression([], t.blockStatement([cons[0]])), []) };
+  if (cons.length === 2 && t.isThrowStatement(cons[0])) return { name, value: iife([cons[0]]) };
   // `_ = (a = f, b = g)`: expressions before the parameter's own assignment
   if (cons.slice(0, -1).every((x) => t.isExpressionStatement(x))) return { name, value: t.sequenceExpression([...cons.slice(0, -1).map((x) => x.expression), last.expression.right]) };
   return null;

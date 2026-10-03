@@ -25,7 +25,7 @@ function parse(code) {
   try { return parser.parse(code, opts); } catch { return parser.parse(code, { ...opts, allowAwaitOutsideFunction: true }); }
 }
 
-const { gen, containsNode, identifiersIn } = require('./ast');
+const { gen, containsNode, identifiersIn, staticKey } = require('./ast');
 
 // ---------------------------------------------------------------------------
 // 1. Find the interpreter loops
@@ -561,7 +561,7 @@ function findNamespaceKey(ast, globalName, nsName) {
       if (!t.isIdentifier(d.id, { name: nsName }) || !d.init) continue;
       let key = null;
       t.traverseFast(d.init, (n) => {
-        if (!key && t.isMemberExpression(n) && t.isIdentifier(n.object, { name: globalName })) key = n.computed ? (t.isStringLiteral(n.property) ? n.property.value : null) : n.property.name;
+        if (!key && t.isMemberExpression(n) && t.isIdentifier(n.object, { name: globalName })) key = staticKey(n);
       });
       return key;
     }
