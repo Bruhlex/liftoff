@@ -18,11 +18,10 @@
  * recursively and inlined at their MAKE_CLOSURE site.
  */
 const t = require('@babel/types');
-const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, negate } = require('./ast');
+const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
-/** Registers read / written by a behaviourally inferred template. */
 /** a TEMPLATE operand field: the whole operand, its low / high half, or a constant (`#n`) */
 const templateField = (f, operand) => (f === 'op' ? operand : f === 'lo' ? operand & 0xffff : f === 'hi' ? operand >>> 16 : Number(String(f).slice(1)));
 
@@ -74,6 +73,7 @@ function drainImpure(res) {
   for (const v of res.stack) if (!isPure(v)) res.stmts.push(t.expressionStatement(v));
 }
 
+/** Registers read / written by a behaviourally inferred template. */
 function templateRegEffects(e, operand) {
   const reads = [], writes = [];
   const field = (f) => templateField(f, operand);
@@ -111,7 +111,6 @@ function optionalChain(expr, root) {
 }
 
 
-
 function maxStackLeaf(x) {
   if (!x) return -1;
   let m = -1;
@@ -123,7 +122,6 @@ const UNCOND_JUMP = new Set(['JMP', 'JMP_UNWIND']);
 // ---------------------------------------------------------------------------
 // small AST helpers
 // ---------------------------------------------------------------------------
-
 
 function constNode(c) {
   if (!c) return t.identifier('undefined');
@@ -276,7 +274,6 @@ function usesArgumentsBeyondSlice(body, n) {
   });
   return all > slices;
 }
-
 
 
 function assignedNames(stmt) {
@@ -597,6 +594,7 @@ class Lifter {
         if (m.startsWith('REG_')) (stores.get(r) || stores.set(r, []).get(r)).push(pc);
       }
     });
+    state.regLoads = loads; // register -> pcs that read it (also through fused and template ops)
     state.tempRegs = new Set();
     state.tempWindow = new Map(); // reg -> { stores, effects } between its store and last load
     const STORE_OPS = new Set(['STORE_REG', 'STORE_ARG', 'STORE_LOCAL', 'STORE_LOCAL_CONST', 'STORE_SCOPE', 'STORE_GLOBAL', 'STORE_GLOBAL_DECL', 'REG_INC', 'REG_DEC', 'REG_PREINC', 'REG_PREDEC', 'TEMPLATE']);
@@ -1273,8 +1271,7 @@ class Lifter {
       if (!condInfo.jumpWhenTrue) test = negate(test);
       // the test is outside the body's block: variables it reads that the body declares at its
       // top level are declared in front of the loop and only assigned inside
-      const testNames = new Set();
-      t.traverseFast(test, (n) => { if (t.isIdentifier(n)) testNames.add(n.name); });
+      const testNames = identifiersIn(test);
       const hoisted = [];
       body.stmts = body.stmts.map((st) => {
         if (!t.isVariableDeclaration(st) || st.kind === 'var' || !st.declarations.every((d) => t.isIdentifier(d.id))) return st;
@@ -1348,7 +1345,7 @@ class Lifter {
         // registers declared among them (`for (let i = 0, f = () => i; ...)`) join the init when
         // nothing reads them after the loop
         const regOf = new Map([...state.regNames].map(([r, n]) => [n, r]));
-        const readAfter = (r) => state.instrs.some(([op, operand], q) => q > L && operand === r && /^(LOAD_REG|REG_)/.test(this.mnem(op)));
+        const readAfter = (r) => (state.regLoads.get(r) || []).some((q) => q > L);
         const joins = (d) => t.isIdentifier(d.id) && (names.has(d.id.name) || (regOf.has(d.id.name) && !readAfter(regOf.get(d.id.name))));
         let slotInits = 0;
         while (outStmts.length) {

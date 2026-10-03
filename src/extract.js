@@ -22,7 +22,8 @@
 const nodeVm = require('vm');
 const t = require('@babel/types');
 const generate = require('@babel/generator').default;
-const { prologueStatements, containsNode, declaredLocals, parse } = require('./locate');
+const { prologueStatements, declaredLocals, parse } = require('./locate');
+const { containsNode } = require('./ast');
 
 const genPretty = (node) => generate(node, { compact: false, comments: false }).code;
 

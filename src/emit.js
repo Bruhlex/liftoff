@@ -360,11 +360,8 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   const left = privateLeft ? privateLeft() : 0;
   if (left) warn(`${left} reference(s) to lowered private members could not be restored`);
   stripIllegalStrict(file);
-  t.traverseFast(file, (n) => {
-    if (t.isDirectiveLiteral(n)) { delete n.extra; if (/^use\\x20strict$/.test(n.value)) n.value = 'use strict'; }
-    if ((t.isClassMethod(n) || t.isClassPrivateMethod(n)) && n.body.directives) n.body.directives = n.body.directives.filter((d) => d.value.value !== 'use strict'); // implied in class bodies
-  });
-  stripRedundantStrict(file);
+  t.traverseFast(file, (n) => { if (t.isDirectiveLiteral(n)) { delete n.extra; if (/^use\\x20strict$/.test(n.value)) n.value = 'use strict'; } });
+  stripRedundantStrict(file); // (also the directives of class members: class bodies are strict)
   // the cleanup passes enable each other (e.g. a removed parameter copy exposes a default
   // parameter check); iterate to a fixpoint
   let code = null;
@@ -588,8 +585,8 @@ function readObjectPattern(body, i, src, ctx) {
       // before anything reads it
       const na = assign(nx);
       if (t.isIdentifier(d.init, { name: src })) {
-        const k = body.findIndex((x, j) => j > i && referencesName(x, name));
-        const ka = k > 0 ? assign(body[k]) : null;
+        const k = body.findIndex((x, j) => j > i && referencesName(x, name)); // first use after the copy
+        const ka = k >= 0 ? assign(body[k]) : null;
         const writes = ka && (t.isIdentifier(ka.left, { name }) || ((t.isArrayPattern(ka.left) || t.isObjectPattern(ka.left)) && name in t.getBindingIdentifiers(ka.left)));
         if (writes && !referencesName(ka.right, name)) { ctx.bare.add(name); continue; }
       }
