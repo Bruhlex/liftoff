@@ -137,6 +137,8 @@ function optMember(obj, key) {
 function propKey(key) {
   // returns {key, computed}
   if (t.isStringLiteral(key)) {
+    // `__proto__: v` would set the prototype; a defined property of that name needs a computed key
+    if (key.value === '__proto__') return { key, computed: true };
     if (isIdentName(key.value)) return { key: t.identifier(key.value), computed: false };
     if (/^(0|[1-9]\d*)$/.test(key.value)) return { key: t.numericLiteral(Number(key.value)), computed: false };
     return { key, computed: false };
@@ -182,7 +184,8 @@ function isPure(node) {
 function isDroppable(node) {
   if (!node || node.__underflow) return true;
   const lit = (n) => t.isNumericLiteral(n) || t.isStringLiteral(n) || t.isBooleanLiteral(n) || t.isNullLiteral(n) || t.isBigIntLiteral(n) ||
-    t.isIdentifier(n, { name: 'undefined' }) || (t.isUnaryExpression(n) && ['-', '+', '!', 'void'].includes(n.operator) && lit(n.argument));
+    t.isIdentifier(n, { name: 'undefined' }) || (t.isUnaryExpression(n) && ['-', '+', '!', 'void'].includes(n.operator) && lit(n.argument) && !(n.operator === '+' && hasBigInt(n.argument)));
+  const hasBigInt = (n) => t.isBigIntLiteral(n) || (t.isUnaryExpression(n) && hasBigInt(n.argument));
   switch (node.type) {
     case 'Identifier':
       return !(node.__global && !(node.name in globalThis));
@@ -196,7 +199,7 @@ function isDroppable(node) {
       if (node.operator === 'delete') return false;
       if (node.operator === 'typeof' && t.isIdentifier(node.argument)) return true;
       if (node.operator === 'void' || node.operator === '!' || node.operator === 'typeof') return isDroppable(node.argument);
-      return lit(node.argument);
+      return lit(node) ;
     case 'BinaryExpression':
       if (node.operator === '===' || node.operator === '!==') return isDroppable(node.left) && isDroppable(node.right);
       if (node.operator === 'in' || node.operator === 'instanceof') return false;
@@ -207,9 +210,13 @@ function isDroppable(node) {
       return isDroppable(node.test) && isDroppable(node.consequent) && isDroppable(node.alternate);
     case 'SequenceExpression':
       return node.expressions.every(isDroppable);
-    case 'ArrayExpression': case 'ObjectExpression':
-      // (a dropped literal is the right side of a destructuring assignment, `[a, b] = [b, a]`)
-      return isPure(node);
+    case 'ArrayExpression': case 'ObjectExpression': {
+      // (a dropped literal is the right side of a destructuring assignment, `[a, b] = [b, a]`, so a
+      // member read in it is a compiler artifact); a spread runs an iterator or getters
+      const value = (e) => (t.isArrayExpression(e) || t.isObjectExpression(e) ? isDroppable(e) : isPure(e));
+      if (t.isArrayExpression(node)) return node.elements.every((e) => !e || (!t.isSpreadElement(e) && value(e)));
+      return node.properties.every((p) => (t.isObjectMethod(p) || (t.isObjectProperty(p) && value(p.value))) && (!p.computed || (t.isLiteral(p.key) && !t.isTemplateLiteral(p.key))));
+    }
     case 'TemplateLiteral':
       return node.expressions.every(lit);
     default:
@@ -572,6 +579,12 @@ class Lifter {
         return sps[0] > Number(tp) && sps[0] < hStart && ls.some((l) => l >= hStart);
       });
       if (inTry) continue;
+      // the store must run before every load: a jump from before it to a point between the store
+      // and a load (a loop exit, a skipped `if` body) leaves the register unset there
+      if (ls.length) {
+        const maxLoad = Math.max(...ls);
+        if (Object.entries(state.jumps).some(([f, to]) => Number(f) < sps[0] && to > sps[0] && to <= maxLoad)) continue;
+      }
       state.tempRegs.add(r);
       let last = ls.length ? Math.max(...ls) : sps[0];
       // a load inside a loop that the store is not part of runs on every iteration: everything up
@@ -933,6 +946,19 @@ class Lifter {
       pc++;
     }
     return { stmts, stack };
+  }
+
+  /** push the result of a property store; when the stored value is still on top of the stack
+   *  (`DUP; ...; SETPROP; DROP`, an assignment used as a value: `f(++o[k])`), the assignment
+   *  takes that value's place, so it is not split into a temporary and a statement */
+  pushStore(state, stack, asg) {
+    const v = asg.right;
+    if (state.nextIsDrop && stack.length && stack[stack.length - 1] === v && typeof v === 'object' && !t.isLiteral(v)) {
+      stack[stack.length - 1] = asg;
+      state.skipNextDrop = true;
+      return;
+    }
+    stack.push(asg);
   }
 
   /** first pc at or after `from` that a jump or exception handler can reach (dead code after an
@@ -1796,8 +1822,25 @@ class Lifter {
     const segs = [];
     let q = pc + 1;
     let prefixFrom = null;
+    // rest element: PUSH_ARR; STORE a; L: PUSH; STORE done; LOAD it; ITER_NEXT_RESULT; STORE r; LOAD r;
+    // GETPROP "done"; JMPT X; ... push(r.value) ...; JMP L; X: LOAD a; <store>
+    const restElement = (q2) => {
+      if (!(M(q2) === 'PUSH_ARR' && M(q2 + 1) === 'STORE_REG' && M(q2 + 2) === 'PUSH_CONST' && M(q2 + 3) === 'STORE_REG' && instrs[q2 + 3][1] === doneReg &&
+            M(q2 + 4) === 'LOAD_REG' && instrs[q2 + 4][1] === itReg && M(q2 + 5) === 'ITER_NEXT_RESULT' && M(q2 + 6) === 'STORE_REG' && M(q2 + 7) === 'LOAD_REG' &&
+            M(q2 + 8) === 'GETPROP_NAMED' && isStr(q2 + 8, 'done') && M(q2 + 9) === 'JMPT')) return null;
+      const exit = jumps[q2 + 9];
+      if (!(exit > q2 + 9 && exit < tp && M(exit - 1) === 'JMP' && jumps[exit - 1] === q2 + 2 && M(exit) === 'LOAD_REG' && instrs[exit][1] === instrs[q2 + 1][1])) return null;
+      return { arr: instrs[q2 + 1][1], from: exit + 1 };
+    };
     while (q < tp) {
       if (holeElement(q)) { segs.push({ hole: true }); q += 10; prefixFrom = null; continue; }
+      const rest = restElement(q);
+      if (rest) {
+        segs.push({ from: rest.from, to: tp, rest: true, prefix: prefixFrom !== null ? [prefixFrom, q] : null });
+        state.hiddenRegs.add(rest.arr);
+        q = tp;
+        break;
+      }
       if (!valueElement(q)) {
         // `LOAD x; STORE_REG t` copies of a target object before the element's next(): keep scanning
         if (prefixFrom === null && M(q) !== null && !elementHead(q)) {
@@ -1871,12 +1914,19 @@ class Lifter {
       if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' })) { target = st.expression.left; value = st.expression.right; allDecl = false; }
       else if (t.isVariableDeclaration(st) && st.declarations.length === 1) { target = st.declarations[0].id; value = st.declarations[0].init; anyDecl = true; declKind = declKind === 'let' || st.kind === 'let' ? 'let' : st.kind; declaredTargets.push(target); }
       else return null;
-      if (t.isIdentifier(value, { name: elemId.name })) elements.push(target);
+      // `[{ x }]`: the element's object pattern reads the property of the element value
+      const objPattern = (v) => (t.isMemberExpression(v) && t.isIdentifier(v.object, { name: elemId.name }) && (!v.computed || t.isStringLiteral(v.property) || t.isNumericLiteral(v.property))
+        ? t.objectPattern([t.objectProperty(v.computed ? v.property : t.identifier(v.property.name), target, false, !v.computed && t.isIdentifier(target, { name: v.property.name }))]) : null);
+      if (seg.rest) {
+        if (!t.isIdentifier(value, { name: elemId.name })) return null;
+        elements.push(t.restElement(target));
+      } else if (t.isIdentifier(value, { name: elemId.name })) elements.push(target);
+      else if (objPattern(value)) elements.push(objPattern(value));
       else if (t.isConditionalExpression(value) && t.isBinaryExpression(value.test, { operator: '===' }) && t.isIdentifier(value.test.left, { name: elemId.name }) &&
                t.isIdentifier(value.test.right, { name: 'undefined' }) && t.isIdentifier(value.alternate, { name: elemId.name })) elements.push(t.assignmentPattern(target, value.consequent));
       else return null;
     }
-    while (elements.length && elements[elements.length - 1] === null) elements.pop();
+    // (trailing holes stay: `[,] = it` still calls next() once)
     state.hiddenRegs.add(itReg);
     state.hiddenRegs.add(doneReg);
     this.dropIterInit(state, itReg);
@@ -2043,6 +2093,16 @@ class Lifter {
       if (!affected && readsProps(v, props)) affected = true;
       if (!affected && stmtHasCall && !t.isIdentifier(v)) affected = false; // property reads are assumed stable
       if (affected) {
+        // values below that read a variable this one assigns are evaluated before it
+        const own = assignedNames(t.expressionStatement(v));
+        for (let j = 0; j < i && own.size; j++) {
+          const u = stack[j];
+          if (!u || u.__underflow || u.__marker || u.__builder || t.isLiteral(u) || t.isFunction(u)) continue;
+          if (![...own].some((nm) => referencesName(u, nm))) continue;
+          const uid = t.identifier(this.tmpName());
+          emit(t.variableDeclaration('const', [t.variableDeclarator(uid, u)]));
+          for (let k = 0; k < stack.length; k++) stack[k] = replaceIdentity(stack[k], u, uid);
+        }
         const id = t.identifier(this.tmpName());
         emit(t.variableDeclaration('const', [t.variableDeclarator(id, v)]));
         for (let j = 0; j < stack.length; j++) stack[j] = replaceIdentity(stack[j], v, id);
@@ -2165,6 +2225,16 @@ class Lifter {
   assign(state, stack, emit, target, v, declKind = null) {
     const idx = stack.lastIndexOf(v);
     if (idx >= 0 && !t.isLiteral(v)) {
+      if (declKind && t.isIdentifier(target)) {
+        // a declaring store whose value stays on the stack (`f = g = function () {}` in a block)
+        if (v.__builder) emit(t.variableDeclaration('let', [t.variableDeclarator(t.identifier(target.name))]));
+        else {
+          this.emitStatement(state, stack, emit, t.variableDeclaration(declKind, [t.variableDeclarator(target, v)]));
+          const at = stack.lastIndexOf(v);
+          if (at >= 0) stack[at] = t.identifier(target.name);
+          return;
+        }
+      }
       // value is still needed on the stack (DUP'd): make the assignment an expression
       const a = t.assignmentExpression('=', target, v);
       stack[idx] = a;
@@ -2307,7 +2377,8 @@ class Lifter {
         let root = v;
         while (t.isMemberExpression(root)) root = root.object;
         const multi = tw && tw.loads > 1 && !(t.isIdentifier(v) || t.isLiteral(v) || t.isThisExpression(v)) && !(root && root.__global);
-        if (state.tempRegs.has(operand) && !multi && this.isSimpleValue(v, win) && !stack.includes(v)) { state.tempValues.set(operand, v); state.hiddenRegs.add(operand); return; }
+        // (a register never read keeps its store when the value can throw or run a getter)
+        if (state.tempRegs.has(operand) && !multi && this.isSimpleValue(v, win) && !stack.includes(v) && (!tw || tw.loads || isDroppable(v))) { state.tempValues.set(operand, v); state.hiddenRegs.add(operand); return; }
         this.assign(state, stack, emit, this.regId(state, operand), v);
         return;
       }
@@ -2466,8 +2537,9 @@ class Lifter {
       }
       case 'VOID': push(t.unaryExpression('void', pop())); return;
       case 'TO_NUMERIC': case 'TO_PROPERTY_KEY': return; // coercions: identity for source recovery
-      case 'INC_VALUE': push(t.binaryExpression('+', pop(), t.numericLiteral(1))); return;
-      case 'DEC_VALUE': push(t.binaryExpression('-', pop(), t.numericLiteral(1))); return;
+      // (tagged: only an increment is an update `++x`, which also works on BigInts; `x + 1` does not)
+      case 'INC_VALUE': { const b = t.binaryExpression('+', pop(), t.numericLiteral(1)); b.__inc = true; push(b); return; }
+      case 'DEC_VALUE': { const b = t.binaryExpression('-', pop(), t.numericLiteral(1)); b.__inc = true; push(b); return; }
       case 'TO_STRING': { const v = pop(); if (t.isStringLiteral(v)) { push(v); return; } const c = t.callExpression(t.identifier('String'), [v]); c.__toString = true; push(c); return; }
 
       // property access
@@ -2482,8 +2554,8 @@ class Lifter {
       case 'GET_THIS_PROP': push(member(t.thisExpression(), keyConst(operand))); return;
       case 'OPT_GETPROP_NAMED': push(optMember(pop(), keyConst(operand))); return;
       case 'OPT_GETPROP_COMPUTED': { const key = pop(), obj = pop(); push(optMember(obj, key)); return; }
-      case 'SETPROP_NAMED': { const v = pop(), obj = pop(); push(t.assignmentExpression('=', member(obj, keyConst(operand)), v)); return; }
-      case 'SETPROP_COMPUTED': { const v = pop(), key = pop(), obj = pop(); push(t.assignmentExpression('=', member(obj, key), v)); return; }
+      case 'SETPROP_NAMED': { const v = pop(), obj = pop(); this.pushStore(state, stack, t.assignmentExpression('=', member(obj, keyConst(operand)), v)); return; }
+      case 'SETPROP_COMPUTED': { const v = pop(), key = pop(), obj = pop(); this.pushStore(state, stack, t.assignmentExpression('=', member(obj, key), v)); return; }
       case 'DELETE_PROP': {
         if (operand >= 0) { const obj = pop(); push(t.unaryExpression('delete', member(obj, keyConst(operand)))); }
         else { const key = pop(), obj = pop(); push(t.unaryExpression('delete', member(obj, key))); }

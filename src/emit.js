@@ -400,6 +400,23 @@ function containsOwn(stmts, pred) {
 // the members are restored as `#field_N` / `#method_N`.
 // ---------------------------------------------------------------------------
 
+/** may evaluating the expression change state? (calls, assignments, yield, await, new, delete) */
+function hasEffects(node) {
+  let hit = false;
+  t.traverseFast(node, (x) => {
+    if (t.isCallExpression(x) || t.isOptionalCallExpression(x) || t.isNewExpression(x) || t.isAssignmentExpression(x) || t.isUpdateExpression(x) ||
+        t.isYieldExpression(x) || t.isAwaitExpression(x) || t.isTaggedTemplateExpression(x) || t.isUnaryExpression(x, { operator: 'delete' })) hit = true;
+  });
+  return hit;
+}
+
+/** number of `let x;` declarations without initializer at the start of a body */
+function leadingBareLets(body) {
+  let k = 0;
+  while (k < body.length && t.isVariableDeclaration(body[k]) && body[k].declarations.every((d) => !d.init && t.isIdentifier(d.id))) k++;
+  return k;
+}
+
 /** does an expression moved into the parameter list read a binding of the function body? (the
  *  parameter scope does not see those) */
 function readsBodyBinding(fnPath, expr, own = []) {
@@ -441,7 +458,7 @@ function argumentsToParams(path) {
   visit(n.body, null);
   if (other || !uses.length) return;
   // the first missing parameter must get a default, or the `length` would grow
-  const first = n.body.body[0];
+  const first = n.body.body[leadingBareLets(n.body.body)];
   const isDefaultOf = (st, i) => t.isIfStatement(st) && t.isBinaryExpression(st.test, { operator: '===' }) && t.isMemberExpression(st.test.left) &&
     t.isIdentifier(st.test.left.object, { name: 'arguments' }) && t.isNumericLiteral(st.test.left.property, { value: i }) && t.isIdentifier(st.test.right, { name: 'undefined' });
   if (!isDefaultOf(first, P)) return;
@@ -474,9 +491,11 @@ function destructuredParams(path) {
     i++;
   }
   const st = body[i];
-  if (!src || !st || !t.isExpressionStatement(st) || !t.isAssignmentExpression(st.expression, { operator: '=' }) ||
-      !(t.isArrayPattern(st.expression.left) || t.isObjectPattern(st.expression.left)) || !t.isIdentifier(st.expression.right, { name: src })) return;
-  const pi = n.params.findIndex((p) => t.isIdentifier(p, { name: src }));
+  if (!st || !t.isExpressionStatement(st) || !t.isAssignmentExpression(st.expression, { operator: '=' }) ||
+      !(t.isArrayPattern(st.expression.left) || t.isObjectPattern(st.expression.left)) || !t.isIdentifier(st.expression.right) || (src && st.expression.right.name !== src)) return;
+  src = st.expression.right.name;
+  // the parameter, possibly with a default: `(a0 = x) => { let r; [r] = a0; }` -> `([r] = x) => {}`
+  const pi = n.params.findIndex((p) => t.isIdentifier(p, { name: src }) || (t.isAssignmentPattern(p) && t.isIdentifier(p.left, { name: src })));
   if (pi < 0) return;
   const pat = st.expression.left;
   const bound = Object.keys(t.getBindingIdentifiers(pat));
@@ -484,7 +503,7 @@ function destructuredParams(path) {
   if (body.slice(i + 1).some((x) => referencesName(x, src))) return;
   if (referencesName(n.body, 'arguments') || readsBodyBinding(path, pat, bound)) return;
   // defaults inside the pattern may only read parameters and outer bindings
-  n.params[pi] = pat;
+  n.params[pi] = t.isAssignmentPattern(n.params[pi]) ? t.assignmentPattern(pat, n.params[pi].right) : pat;
   body.splice(0, i + 1);
   path.scope.crawl();
 }
@@ -512,9 +531,13 @@ function foldDerivedFieldInitializers(file) {
         ? stmts.findIndex((st) => t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isSuper(st.expression.callee))
         : -1;
       if (cp.node.superClass && superIdx < 0) return;
-      const callSt = stmts[superIdx + 1];
+      // (uninitialized `let x;` declarations may come first; they have no effect)
+      let callIdx = superIdx + 1;
+      while (callIdx < stmts.length && t.isVariableDeclaration(stmts[callIdx]) && stmts[callIdx].declarations.every((d) => !d.init)) callIdx++;
+      const callSt = stmts[callIdx];
       const call = callSt && t.isExpressionStatement(callSt) && t.isCallExpression(callSt.expression) ? callSt.expression : null;
-      if (!call || !t.isMemberExpression(call.callee) || !t.isIdentifier(call.callee.property, { name: 'call' }) || !t.isIdentifier(call.callee.object) ||
+      const isCallKey = (m) => (!m.computed && t.isIdentifier(m.property, { name: 'call' })) || (m.computed && t.isStringLiteral(m.property, { value: 'call' }));
+      if (!call || !t.isMemberExpression(call.callee) || !isCallKey(call.callee) || !t.isIdentifier(call.callee.object) ||
           call.arguments.length !== 1 || !t.isThisExpression(call.arguments[0])) return;
       const b = cp.scope.getBinding(call.callee.object.name);
       if (!b || !b.path.isVariableDeclarator() || b.constantViolations.length || b.referencePaths.length !== 1) return;
@@ -522,7 +545,8 @@ function foldDerivedFieldInitializers(file) {
       if (!t.isFunctionExpression(fn) || fn.params.length || fn.async || fn.generator) return;
       // brand bookkeeping of the WeakMap lowering: `C.wm.has(this) || C.wm.set(this, ...)`
       const isBrand = (st) => t.isExpressionStatement(st) && t.isLogicalExpression(st.expression, { operator: '||' }) &&
-        t.isCallExpression(st.expression.left) && t.isMemberExpression(st.expression.left.callee) && t.isIdentifier(st.expression.left.callee.property, { name: 'has' });
+        t.isCallExpression(st.expression.left) && t.isMemberExpression(st.expression.left.callee) &&
+        (t.isIdentifier(st.expression.left.callee.property, { name: 'has' }) || t.isStringLiteral(st.expression.left.callee.property, { value: 'has' }));
       const setters = new Map(); // arrow name -> private name
       const fields = [];
       const brandKeys = []; // `const k = "__vmwm__$pib_N"` naming the brand slot
@@ -571,10 +595,12 @@ function foldDerivedFieldInitializers(file) {
         }
         return; // anything else: leave as it is
       }
-      if (!fields.length) return;
+      if (!fields.length && !brandKeys.length) return;
       cp.node.body.body = [...fields, ...body];
-      stmts.splice(superIdx + 1, 1);
+      stmts.splice(callIdx, 1);
       b.path.remove();
+      // nothing left of a base class's constructor: the class has its default one
+      if (!cp.node.superClass && !stmts.length && !ctor.params.length) cp.node.body.body = cp.node.body.body.filter((m) => m !== ctor);
       for (const k of brandKeys) {
         const kb = cp.scope.getBinding(k);
         if (kb && !kb.constantViolations.length && kb.path.isVariableDeclarator() && t.isStringLiteral(kb.path.node.init) && /^__vmwm__\$pib_/.test(kb.path.node.init.value)) {
@@ -749,6 +775,11 @@ function restorePrivateMembers(file, privateSymbols, warn) {
         if (b && brandHelpers.has(b.identifier)) { p.replaceWith(p.node.arguments[0]); return; }
       }
     },
+    // `sym in o` with a private member's symbol -> `#member in o`
+    BinaryExpression(p) {
+      const n = p.node;
+      if (n.operator === 'in' && t.isIdentifier(n.left) && privateSymbols.has(n.left.name)) n.left = t.privateName(t.identifier(symName(n.left.name)));
+    },
     MemberExpression: {
       exit(p) {
         const n = p.node;
@@ -879,8 +910,10 @@ function cleanup(file) {
     // to duplicate (the VM evaluates it once, as `&&` / `||` do)
     ConditionalExpression(path) {
       const n = path.node;
-      if (t.isNodesEquivalent(n.test, n.alternate)) path.replaceWith(t.logicalExpression('&&', n.test, n.consequent));
-      else if (t.isNodesEquivalent(n.test, n.consequent)) path.replaceWith(t.logicalExpression('||', n.test, n.alternate));
+      // (structurally equal operands with effects, `(yield) ? yield : yield`, are two evaluations)
+      const same = (a, b) => a === b || (t.isNodesEquivalent(a, b) && !hasEffects(a));
+      if (same(n.test, n.alternate)) path.replaceWith(t.logicalExpression('&&', n.test, n.consequent));
+      else if (same(n.test, n.consequent)) path.replaceWith(t.logicalExpression('||', n.test, n.alternate));
     },
     // x = x + 1  ->  x++ ;   (x = x + 1) -> ++x ; x = x op y -> x op= y
     AssignmentExpression(path) {
@@ -891,8 +924,8 @@ function cleanup(file) {
           t.isMemberExpression(n.right.left) && n.right.left.object === n.left.object) &&
           (!n.left.computed || t.isLiteral(n.left.property)) && t.isNodesEquivalent(n.right.left, n.left) &&
           ['+', '-', '*', '/', '%', '**', '<<', '>>', '>>>', '&', '|', '^'].includes(n.right.operator)) {
-        if ((n.right.operator === '+' || n.right.operator === '-') && t.isNumericLiteral(n.right.right, { value: 1 }) && path.parentPath.isExpressionStatement()) {
-          path.replaceWith(t.updateExpression(n.right.operator === '+' ? '++' : '--', n.left, false));
+        if ((n.right.operator === '+' || n.right.operator === '-') && t.isNumericLiteral(n.right.right, { value: 1 }) && n.right.__inc) {
+          path.replaceWith(t.updateExpression(n.right.operator === '+' ? '++' : '--', n.left, !path.parentPath.isExpressionStatement()));
         } else {
           path.replaceWith(t.assignmentExpression(n.right.operator + '=', n.left, n.right.right));
         }
@@ -900,7 +933,7 @@ function cleanup(file) {
       }
       if (n.operator !== '=' || !t.isIdentifier(n.left) || !t.isBinaryExpression(n.right)) return;
       const r = n.right;
-      if ((r.operator === '+' || r.operator === '-') && t.isIdentifier(r.left, { name: n.left.name }) && t.isNumericLiteral(r.right, { value: 1 })) {
+      if ((r.operator === '+' || r.operator === '-') && t.isIdentifier(r.left, { name: n.left.name }) && t.isNumericLiteral(r.right, { value: 1 }) && r.__inc) {
         const isStmt = path.parentPath.isExpressionStatement();
         path.replaceWith(t.updateExpression(r.operator === '+' ? '++' : '--', t.identifier(n.left.name), !isStmt));
         return;
@@ -996,8 +1029,9 @@ function cleanup(file) {
       argumentsToParams(path);
       // default parameters: `if (a === undefined) { a = X; }` at the start of the body
       const body = n.body.body;
-      while (body.length) {
-        const st = body[0];
+      const k = leadingBareLets(body);
+      while (body.length > k) {
+        const st = body[k];
         if (!t.isIfStatement(st) || st.alternate) break;
         const test = st.test;
         if (!t.isBinaryExpression(test, { operator: '===' }) || !t.isIdentifier(test.left) || !t.isIdentifier(test.right, { name: 'undefined' })) break;
@@ -1011,7 +1045,7 @@ function cleanup(file) {
         const pi = n.params.findIndex((p) => t.isIdentifier(p, { name: test.left.name }));
         if (pi < 0 || readsBodyBinding(path, value)) break;
         n.params[pi] = t.assignmentPattern(t.identifier(test.left.name), value);
-        body.shift();
+        body.splice(k, 1);
       }
     },
   });
