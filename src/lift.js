@@ -1862,8 +1862,7 @@ class Lifter {
       if (holeElement(q)) { segs.push({ hole: true }); q += 10; prefixFrom = null; continue; }
       const rest = restElement(q);
       if (rest) {
-        segs.push({ from: rest.from, to: tp, rest: true, prefix: prefixFrom !== null ? [prefixFrom, q] : null });
-        state.hiddenRegs.add(rest.arr);
+        segs.push({ from: rest.from, to: tp, rest: true, restArr: rest.arr, prefix: prefixFrom !== null ? [prefixFrom, q] : null });
         q = tp;
         break;
       }
@@ -1944,8 +1943,9 @@ class Lifter {
       const objPattern = (v) => (t.isMemberExpression(v) && t.isIdentifier(v.object, { name: elemId.name }) && (!v.computed || t.isStringLiteral(v.property) || t.isNumericLiteral(v.property))
         ? t.objectPattern([t.objectProperty(v.computed ? v.property : t.identifier(v.property.name), target, false, !v.computed && t.isIdentifier(target, { name: v.property.name }))]) : null);
       if (seg.rest) {
-        if (!t.isIdentifier(value, { name: elemId.name })) return null;
-        elements.push(t.restElement(target));
+        if (t.isIdentifier(value, { name: elemId.name })) elements.push(t.restElement(target));
+        else if (objPattern(value)) elements.push(t.restElement(objPattern(value)));
+        else return null;
       } else if (t.isIdentifier(value, { name: elemId.name })) elements.push(target);
       else if (objPattern(value)) elements.push(objPattern(value));
       else if (t.isConditionalExpression(value) && t.isBinaryExpression(value.test, { operator: '===' }) && t.isIdentifier(value.test.left, { name: elemId.name }) &&
@@ -1953,6 +1953,7 @@ class Lifter {
       else return null;
     }
     // (trailing holes stay: `[,] = it` still calls next() once)
+    for (const seg of segs) if (seg.restArr !== undefined) state.hiddenRegs.add(seg.restArr);
     state.hiddenRegs.add(itReg);
     state.hiddenRegs.add(doneReg);
     this.dropIterInit(state, itReg);
@@ -2348,7 +2349,10 @@ class Lifter {
     const keyConst = (i) => (K[i] ? constNode(K[i]) : t.stringLiteral(`__k${i}`));
 
     switch (m) {
-      case 'NOP': case 'DESTRUCTURE_CHECK': case 'TRY_POP': case 'FINALLY_ENTER': case 'FINALLY_END':
+      // RequireObjectCoercible of a destructuring source: a property read of the pattern throws the
+      // same way, only an empty pattern (`{} = v`, the value then dropped) needs it spelled out
+      case 'DESTRUCTURE_CHECK': { const v = pop(); if (v && typeof v === 'object' && !v.__marker) { const c = t.cloneNode(v, true); c.__coercible = true; push(c); } else push(v); return; }
+      case 'NOP': case 'TRY_POP': case 'FINALLY_ENTER': case 'FINALLY_END':
         return;
       case 'DEBUGGER': emit(t.debuggerStatement()); return;
       case 'DECOY_PUSH': push(t.identifier('undefined')); return;
@@ -2371,6 +2375,7 @@ class Lifter {
       case 'DROP': {
         if (state.skipNextDrop) { state.skipNextDrop = false; return; }
         const v = pop();
+        if (v && v.__coercible && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.assignmentExpression('=', t.objectPattern([]), v))); return; }
         if (!stack.includes(v) && !(state.alive && state.alive.has(v)) && !isDroppable(v)) this.emitStatement(state, stack, emit, t.expressionStatement(v));
         return;
       }
