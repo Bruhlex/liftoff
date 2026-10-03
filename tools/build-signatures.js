@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Build / extend the normal-form signature database (src/signatures.json)
+ * Build / extend the normal-form signature database (src/classify/signatures.json)
  * from VM-protected samples whose handlers the rules classify.
  *
  *   node tools/build-signatures.js ../out.js ../test*.js ../fib.js
@@ -17,7 +17,7 @@ const { normalize } = require('../src/normalize');
 const { locate } = require('../src/locate');
 const { canonicalize, classifyHandler } = require('../src/classify');
 
-const DB = path.join(__dirname, '..', 'src', 'signatures.json');
+const DB = path.join(__dirname, '..', 'src', 'classify', 'signatures.json');
 
 async function main() {
   const argv = process.argv.slice(2);

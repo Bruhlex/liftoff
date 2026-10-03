@@ -1,151 +1,22 @@
 'use strict';
 /**
- * Step 2: give every opcode handler a *semantic* label.
- *
- * Each handler body is first canonicalized: every identifier that plays a
- * known role in the interpreter (operand stack, stack pointer, pc, constant
- * pool, ...) is renamed to a fixed token, every remaining local gets a
- * positional name (v0, v1, ...), and obfuscated property names that were
- * assigned a role (scope slots, try-frame fields, ...) are renamed too. What is
- * left is the handler's *shape*, which is the same in every obfuscator.io
- * build; only the opcode number in front of it changes. The classification
- * rules below are written against that canonical text.
+ * The classification rules: about 130 patterns over the canonical text, each naming an
+ * instruction (mnemonic and details such as the operator or the fields an operand encodes).
  */
+
 const t = require('@babel/types');
-const generate = require('@babel/generator').default;
-
-const gen = (node) => generate(node, { compact: true, comments: false, jsescOption: { minimal: true } }).code;
-
-// ---------------------------------------------------------------------------
-// Canonicalization
-// ---------------------------------------------------------------------------
-
-function roleMap(roles, handler, helpers) {
-  const m = new Map();
-  const set = (name, tok) => { if (name) m.set(name, tok); };
-  set(roles.stack, 'S');
-  set(roles.sp, 'SP');
-  set(roles.pc, 'PC');
-  set(handler.operandVar, 'OP');
-  set(handler.opVar, 'OPC');
-  set(roles.regs, 'R');
-  set(roles.consts, 'K');
-  set(roles.jumps, 'J');
-  set(roles.tries, 'TT');
-  set(roles.args, 'ARGS');
-  set(roles.this, 'THIS');
-  set(roles.newTarget, 'NT');
-  set(roles.scope, 'SC');
-  set(roles.lexThis, 'LT');
-  set(roles.callee, 'FN');
-  set(roles.prog, 'PROG');
-  set(roles.parentScope, 'PSC');
-  set(roles.tryFrames, 'TF');
-  set(roles.global, 'G');
-  set(roles.ns, 'NS');
-  set(roles.strict, 'STRICT');
-  set(roles.derived, 'DERIVED');
-  set(roles.arrowFlag, 'ARROW');
-  set(roles.len, 'LEN');
-  set(roles.code, 'CODE');
-  for (const f of roles.flagLocals || []) if (!m.has(f)) m.set(f, 'FLAG');
-  for (const [name, role] of helpers) {
-    if (role.startsWith('alias:')) m.set(name, role.slice(6).replace(/\./g, '_'));
-    else if (role.startsWith('const:')) m.set(name, role.slice(6).toUpperCase());
-    else m.set(name, 'H_' + role);
-  }
-  return m;
-}
-
-function propMap(roles) {
-  const m = new Map();
-  for (const [role, name] of Object.entries(roles.scopeProps || {})) m.set(name, 'sc_' + role);
-  for (const [role, name] of Object.entries(roles.tryFrameProps || {})) m.set(name, 'tf_' + role);
-  return m;
-}
-
-const OBFUSCATED_PROP = /^(_\$\w+|_\w{2,3})$/;
-// JS globals that must keep their names in the canonical text
-const JS_GLOBALS = new Set(('undefined NaN Infinity Object Array Function String Number Boolean Symbol BigInt Math JSON Reflect Proxy Promise ' +
-  'RegExp Error TypeError ReferenceError RangeError SyntaxError EvalError URIError Map Set WeakMap WeakSet WeakRef Date ' +
-  'Int32Array Uint8Array Uint16Array Uint32Array Float64Array DataView ArrayBuffer globalThis console arguments eval isNaN ' +
-  'isFinite parseInt parseFloat Iterator AsyncIterator Generator FinalizationRegistry Atomics SharedArrayBuffer Intl this').split(' '));
-
-const { normalizeStatements, sortEqualityOperands } = require('./normalform');
-
-/**
- * Produce the canonical text of a handler body.
- * With `normal: true` the body is first brought into normal form.
- */
-function canonicalize(handler, roles, helpers, { normal = false } = {}) {
-  if (normal) handler = { ...handler, body: normalizeStatements(handler.body) };
-  const rmap = roleMap(roles, handler, helpers);
-  const pmap = propMap(roles);
-  const locals = new Map();
-  const props = new Map();
-  const labels = new Map();
-  const local = (name) => {
-    if (rmap.has(name)) return rmap.get(name);
-    if (JS_GLOBALS.has(name)) return name;
-    if (!locals.has(name)) locals.set(name, `v${locals.size}`);
-    return locals.get(name);
-  };
-  const prop = (name) => {
-    if (pmap.has(name)) return pmap.get(name);
-    if (OBFUSCATED_PROP.test(name)) {
-      if (!props.has(name)) props.set(name, `p${props.size}`);
-      return props.get(name);
-    }
-    return name;
-  };
-  const label = (name) => {
-    if (!labels.has(name)) labels.set(name, `L${labels.size}`);
-    return labels.get(name);
-  };
-
-  const body = handler.body.map((s) => t.cloneNode(s, true));
-  const walk = (node, parent, key) => {
-    if (!node || typeof node.type !== 'string') return;
-    if (t.isIdentifier(node)) {
-      if (t.isMemberExpression(parent) && key === 'property' && !parent.computed) node.name = prop(node.name);
-      else if (t.isOptionalMemberExpression(parent) && key === 'property' && !parent.computed) node.name = prop(node.name);
-      else if ((t.isObjectProperty(parent) || t.isObjectMethod(parent)) && key === 'key' && !parent.computed) node.name = prop(node.name);
-      else if (t.isLabeledStatement(parent) && key === 'label') node.name = label(node.name);
-      else if ((t.isBreakStatement(parent) || t.isContinueStatement(parent)) && key === 'label') node.name = label(node.name);
-      else node.name = local(node.name);
-      return;
-    }
-    if (t.isStringLiteral(node) && (t.isObjectProperty(parent) && key === 'key')) {
-      node.value = prop(node.value);
-      return;
-    }
-    for (const k of t.VISITOR_KEYS[node.type] || []) {
-      const v = node[k];
-      if (Array.isArray(v)) v.forEach((c) => walk(c, node, k));
-      else if (v && typeof v.type === 'string') walk(v, node, k);
-    }
-  };
-  // Pre-seed locals declared in the handler (so declaration order gives stable numbering)
-  for (const st of body) walk(st, null, null);
-
-  // Drop the trailing `break;` / `continue;` and stringify.
-  let stmts = body;
-  const last = stmts[stmts.length - 1];
-  if (last && (t.isBreakStatement(last) || t.isContinueStatement(last)) && !last.label) stmts = stmts.slice(0, -1);
-  if (normal) stmts = stmts.map((st) => sortEqualityOperands(st));
-  let text = stmts.map(gen).join('');
-  // cosmetic normalizations so regexes stay simple
-  text = text.replace(/;;/g, ';');
-  return text;
-}
+const { roleMap } = require('./canonical');
 
 // ---------------------------------------------------------------------------
 // Helpers for rules
 // ---------------------------------------------------------------------------
 
 const count = (s, re) => (s.match(re) || []).length;
+
 const BIN_RE = /^let v0=S\[--SP\];let v1=S\[--SP\];S\[SP\+\+\]=v1(\*\*|>>>|<<|>>|<=|>=|===|!==|==|!=|\*|\/|%|\^|\+|-|\||&|<|>| in | instanceof )v0;PC\+\+;$/;
+
 const FUSED_RE = /^let v0=OP&65535;let v1=OP>>>16;S\[SP\+\+\]=R\[v0\](\*\*|>>>|<<|>>|<=|>=|===|!==|==|!=|\*|\/|%|\^|\+|-|\||&|<|>)K\[v1\];PC\+\+;$/;
+
 const ROT_RE = /^let v0=S\[SP-3\];let v1=S\[SP-2\];let v2=S\[SP-1\];S\[SP-3\]=(v\d);S\[SP-2\]=(v\d);S\[SP-1\]=(v\d);PC\+\+;$/;
 
 /**
@@ -423,51 +294,4 @@ function classifyHandler(text, ctx) {
   return null;
 }
 
-/**
- * Build the opcode table for a located VM.
- * Returns { table: Map<opcode, {mnemonic, ...info, text}>, unknown: [{opcode, text}] }
- */
-function buildOpcodeTable(vm) {
-  const { handlers, roles, helpers, yields } = vm;
-  const table = new Map();
-  const unknown = [];
-  const seenText = new Map();
-  const signatures = loadSignatures();
-  for (const h of handlers) {
-    const text = canonicalize(h, roles, helpers);
-    const prev = table.get(h.opcode);
-    let cls = classifyHandler(text, { handler: h, roles, helpers });
-    if (!cls) {
-      const nf = canonicalize(h, roles, helpers, { normal: true });
-      cls = classifyHandler(nf, { handler: h, roles, helpers });
-      if (!cls && signatures.has(nf)) cls = { ...signatures.get(nf), viaSignature: true };
-    }
-    if (cls) {
-      if (!prev || !prev.mnemonic || prev.unknown) table.set(h.opcode, { ...cls, text });
-    } else if (!prev) {
-      table.set(h.opcode, { mnemonic: `UNKNOWN_${h.opcode}`, unknown: true, text });
-    }
-    seenText.set(h.opcode, text);
-  }
-  for (const [op, e] of table) if (e.unknown) unknown.push({ opcode: op, text: e.text });
-  if (yields) {
-    if (yields.await !== null) table.set(yields.await, { mnemonic: 'AWAIT', text: '' });
-    if (yields.yield !== null) table.set(yields.yield, { mnemonic: 'YIELD', text: '' });
-    if (yields.yieldStar !== null) table.set(yields.yieldStar, { mnemonic: 'YIELD_STAR', text: '' });
-  }
-  return { table, unknown };
-}
-
-let signatureCache = null;
-function loadSignatures() {
-  if (signatureCache) return signatureCache;
-  signatureCache = new Map();
-  try {
-    const custom = typeof process !== 'undefined' && process.env && process.env.VMDEC_SIGNATURES;
-    const db = custom ? JSON.parse(require('fs').readFileSync(custom, 'utf8')) : require('./signatures.json');
-    for (const [k, v] of Object.entries(db.signatures || {})) signatureCache.set(k, v);
-  } catch { /* no database yet */ }
-  return signatureCache;
-}
-
-module.exports = { canonicalize, classifyHandler, buildOpcodeTable, normalizeStatements, RULES };
+module.exports = { classifyHandler, RULES };
