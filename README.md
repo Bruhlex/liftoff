@@ -1,6 +1,6 @@
 # Liftoff
 
-*A decompiler for obfuscator.io's Virtualization (VM) mode.* Made by [bruhlex](https://github.com/bruhlex).
+*A decompiler for obfuscator.io's Virtualization (VM) mode.*
 
 Liftoff turns JavaScript protected with the **Virtualization (VM)** option of
 [obfuscator.io](https://obfuscator.io) back into readable JavaScript. It comes as a
