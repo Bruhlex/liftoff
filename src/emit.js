@@ -494,86 +494,105 @@ function objectParams(path) {
     const prm = n.params[pi];
     const P = t.isIdentifier(prm) ? prm.name : t.isAssignmentPattern(prm) && t.isIdentifier(prm.left) ? prm.left.name : null;
     if (!P) continue;
-    // a property key: a name, or a computed key expression (`{ [f()]: x }`, evaluated in order)
-    const keyOf = (m) => {
-      if (!t.isMemberExpression(m) || !t.isIdentifier(m.object, { name: P })) return null;
-      if (!m.computed && t.isIdentifier(m.property)) return m.property.name;
-      if (m.computed && t.isStringLiteral(m.property)) return m.property.value;
-      if (m.computed && t.isIdentifier(m.property) && keyTemps.has(m.property.name)) return keyTemps.get(m.property.name);
-      if (m.computed && !referencesName(m.property, P)) return m.property;
-      return null;
-    };
-    const keyTemps = new Map(); // temporary holding a computed key -> its expression
-    const prop = (e) => {
-      const k = keyOf(e);
-      if (k !== null) return { k, def: null };
-      if (t.isConditionalExpression(e) && t.isBinaryExpression(e.test, { operator: '===' }) && t.isIdentifier(e.test.right, { name: 'undefined' })) {
-        // (a computed key is evaluated once: only a name key may appear in both reads)
-        const k2 = keyOf(e.test.left);
-        if (typeof k2 === 'string' && keyOf(e.alternate) === k2) return { k: k2, def: e.consequent };
-      }
-      return null;
-    };
-    const props = [];
-    const bare = new Set();
-    let i = 0;
-    for (; i < body.length; i++) {
-      const st = body[i];
-      if (t.isVariableDeclaration(st) && st.declarations.every((d) => !d.init && t.isIdentifier(d.id))) { for (const d of st.declarations) bare.add(d.id.name); continue; }
-      // `let r = a0; r = a0.x;`: a register that first held the parameter, overwritten right away
-      const nx = body[i + 1];
-      if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && t.isIdentifier(st.declarations[0].init, { name: P }) &&
-          nx && t.isExpressionStatement(nx) && t.isAssignmentExpression(nx.expression, { operator: '=' }) && t.isIdentifier(nx.expression.left, { name: st.declarations[0].id.name }) &&
-          !referencesName(nx.expression.right, st.declarations[0].id.name)) { bare.add(st.declarations[0].id.name); continue; }
-      if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) && bare.has(st.expression.left.name)) {
-        const r = prop(st.expression.right);
-        if (!r) break;
-        bare.delete(st.expression.left.name);
-        props.push({ ...r, target: t.identifier(st.expression.left.name) });
-        continue;
-      }
-      if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && st.declarations[0].init) {
-        // `const k = f(); const x = a0[k];`: the computed key, held in a temporary used once
-        const nx = body[i + 1];
-        const nxInit = nx && t.isVariableDeclaration(nx) && nx.declarations.length === 1 ? nx.declarations[0].init
-          : nx && t.isExpressionStatement(nx) && t.isAssignmentExpression(nx.expression) ? nx.expression.right : null;
-        const kName = st.declarations[0].id.name;
-        if (nxInit && t.isMemberExpression(nxInit) && nxInit.computed && t.isIdentifier(nxInit.object, { name: P }) && t.isIdentifier(nxInit.property, { name: kName }) &&
-            countRefs(t.blockStatement(body.slice(i + 1)), kName) === 1 && !prop(st.declarations[0].init)) {
-          keyTemps.set(kName, st.declarations[0].init);
-          continue;
-        }
-        const r = prop(st.declarations[0].init);
-        if (!r) break;
-        props.push({ ...r, target: st.declarations[0].id });
-        continue;
-      }
-      if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && (t.isArrayPattern(st.expression.left) || t.isObjectPattern(st.expression.left))) {
-        const r = prop(st.expression.right);
-        const names = Object.keys(t.getBindingIdentifiers(st.expression.left));
-        if (!r || !names.every((x) => bare.has(x))) break;
-        for (const x of names) bare.delete(x);
-        props.push({ ...r, target: st.expression.left });
-        continue;
-      }
-      break;
-    }
-    if (!props.length || bare.size) continue;
-    if (body.slice(i).some((x) => referencesName(x, P))) continue;
-    const own = props.flatMap((x) => Object.keys(t.getBindingIdentifiers(x.target)));
-    if (new Set(own).size !== own.length || props.some((x) => x.def && (readsBodyBinding(path, x.def, own) || referencesName(x.def, P)))) continue;
-    if (props.some((x) => typeof x.k !== 'string' && readsBodyBinding(path, x.k, own))) continue;
-    const pat = t.objectPattern(props.map((x) => {
-      const value = x.def ? t.assignmentPattern(x.target, x.def) : x.target;
-      if (typeof x.k !== 'string') return t.objectProperty(x.k, value, true);
-      const short = t.isIdentifier(x.target, { name: x.k }) && isIdentName(x.k);
-      return t.objectProperty(isIdentName(x.k) ? t.identifier(x.k) : t.stringLiteral(x.k), value, false, short);
-    }));
-    n.params[pi] = t.isAssignmentPattern(prm) ? t.assignmentPattern(pat, prm.right) : pat;
-    body.splice(0, i);
+    const ctx = { bare: new Set(), keyTemps: new Map() };
+    const r = readObjectPattern(body, 0, P, ctx);
+    if (!r || ctx.bare.size) continue;
+    if (body.slice(r.end).some((x) => referencesName(x, P))) continue;
+    const own = Object.keys(t.getBindingIdentifiers(r.pattern));
+    if (new Set(own).size !== own.length) continue;
+    // defaults and computed keys move into the parameter scope: they may only read outer bindings
+    let ok = true;
+    t.traverseFast(r.pattern, (x) => {
+      if (t.isAssignmentPattern(x) && (readsBodyBinding(path, x.right, own) || referencesName(x.right, P))) ok = false;
+      if (t.isObjectProperty(x) && x.computed && readsBodyBinding(path, x.key, own)) ok = false;
+    });
+    if (!ok) continue;
+    n.params[pi] = t.isAssignmentPattern(prm) ? t.assignmentPattern(r.pattern, prm.right) : r.pattern;
+    body.splice(0, r.end);
     path.scope.crawl();
     return;
   }
+}
+
+/**
+ * Reads the statements from `i` on that destructure the variable `src` property by property; returns
+ * the object pattern and the index after it, or null. `ctx.bare` collects `let r;` declarations
+ * whose variables a pattern must bind, `ctx.keyTemps` temporaries holding computed keys.
+ */
+function readObjectPattern(body, i, src, ctx) {
+  const keyOf = (m) => {
+    if (!t.isMemberExpression(m) || !t.isIdentifier(m.object, { name: src })) return null;
+    if (!m.computed && t.isIdentifier(m.property)) return m.property.name;
+    if (m.computed && t.isStringLiteral(m.property)) return m.property.value;
+    if (m.computed && t.isIdentifier(m.property) && ctx.keyTemps.has(m.property.name)) return ctx.keyTemps.get(m.property.name);
+    if (m.computed && !referencesName(m.property, src)) return m.property; // `{ [f()]: x }`, evaluated in order
+    return null;
+  };
+  // `src.k` or `src.k === undefined ? D : src.k` (a computed key is evaluated once: names only)
+  const prop = (e) => {
+    const k = keyOf(e);
+    if (k !== null) return { k, def: null };
+    if (t.isConditionalExpression(e) && t.isBinaryExpression(e.test, { operator: '===' }) && t.isIdentifier(e.test.right, { name: 'undefined' })) {
+      const k2 = keyOf(e.test.left);
+      if (typeof k2 === 'string' && keyOf(e.alternate) === k2) return { k: k2, def: e.consequent };
+    }
+    return null;
+  };
+  const decl1 = (st) => (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) ? st.declarations[0] : null);
+  const assign = (st) => (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) ? st.expression : null);
+  const props = [];
+  for (; i < body.length; i++) {
+    const st = body[i], nx = body[i + 1];
+    const d = decl1(st), a = assign(st);
+    if (t.isVariableDeclaration(st) && st.declarations.every((x) => !x.init && t.isIdentifier(x.id))) { for (const x of st.declarations) ctx.bare.add(x.id.name); continue; }
+    // the RequireObjectCoercible check of the source itself: `({} = src);`
+    if (a && t.isObjectPattern(a.left) && !a.left.properties.length && t.isIdentifier(a.right, { name: src })) continue;
+    if (d && d.init) {
+      const name = d.id.name;
+      // `let r = src; r = src.x;`: a register that first held the source, overwritten right away
+      const na = assign(nx);
+      if (t.isIdentifier(d.init, { name: src }) && na && t.isIdentifier(na.left, { name }) && !referencesName(na.right, name)) { ctx.bare.add(name); continue; }
+      // `const k = f(); const x = src[k];`: a computed key held in a temporary used once
+      const nxInit = decl1(nx) ? decl1(nx).init : na ? na.right : null;
+      if (nxInit && t.isMemberExpression(nxInit) && nxInit.computed && t.isIdentifier(nxInit.object, { name: src }) && t.isIdentifier(nxInit.property, { name }) &&
+          countRefs(t.blockStatement(body.slice(i + 1)), name) === 1 && !prop(d.init)) { ctx.keyTemps.set(name, d.init); continue; }
+      const r = prop(d.init);
+      if (!r) break;
+      // `const t = src.w; const x = t.x; ...`: a nested object pattern when t is read for nothing else
+      const nested = /^_t\d+$/.test(name) ? readObjectPattern(body, i + 1, name, ctx) : null;
+      if (nested && !body.slice(nested.end).some((x) => referencesName(x, name))) {
+        props.push({ ...r, target: nested.pattern });
+        i = nested.end - 1;
+        continue;
+      }
+      props.push({ ...r, target: d.id });
+      continue;
+    }
+    if (a && t.isIdentifier(a.left) && ctx.bare.has(a.left.name)) {
+      const r = prop(a.right);
+      if (!r) break;
+      ctx.bare.delete(a.left.name);
+      props.push({ ...r, target: t.identifier(a.left.name) });
+      continue;
+    }
+    if (a && (t.isArrayPattern(a.left) || t.isObjectPattern(a.left))) {
+      const r = prop(a.right);
+      const names = Object.keys(t.getBindingIdentifiers(a.left));
+      if (!r || !names.every((x) => ctx.bare.has(x))) break;
+      for (const x of names) ctx.bare.delete(x);
+      props.push({ ...r, target: a.left });
+      continue;
+    }
+    break;
+  }
+  if (!props.length) return null;
+  const pattern = t.objectPattern(props.map((x) => {
+    const value = x.def ? t.assignmentPattern(x.target, x.def) : x.target;
+    if (typeof x.k !== 'string') return t.objectProperty(x.k, value, true);
+    const short = t.isIdentifier(x.target, { name: x.k }) && isIdentName(x.k);
+    return t.objectProperty(isIdentName(x.k) ? t.identifier(x.k) : t.stringLiteral(x.k), value, false, short);
+  }));
+  return { pattern, end: i };
 }
 
 /** `(a0) => { let r = a0; [r, ...] = a0; ... }` -> `([r, ...]) => { ... }` */

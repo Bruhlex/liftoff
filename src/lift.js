@@ -2094,6 +2094,23 @@ class Lifter {
       state.nextIsDrop = false;
       state.skipNextDrop = true;
     }
+    // a DUP'd value that the statement consumes and that stays on the stack would be evaluated
+    // twice (`const x = (c ? d : o).x; const y = (c ? d : o).y;`): evaluate it once into a temporary
+    if (stmt) {
+      const simple = (v) => t.isIdentifier(v) || t.isLiteral(v) || t.isThisExpression(v) || t.isFunction(v) || t.isClass(v) ||
+        (t.isMemberExpression(v) && (!v.computed || t.isLiteral(v.property)) && simple(v.object));
+      for (let i = 0; i < stack.length; i++) {
+        const v = stack[i];
+        if (!v || typeof v !== 'object' || v.__marker || v.__builder || v.__underflow || simple(v)) continue;
+        let shared = false;
+        t.traverseFast(stmt, (x) => { if (x === v) shared = true; });
+        if (!shared) continue;
+        const id = t.identifier(this.tmpName());
+        emit(t.variableDeclaration('const', [t.variableDeclarator(id, v)]));
+        for (let j = 0; j < stack.length; j++) stack[j] = replaceIdentity(stack[j], v, id);
+        replaceIdentity(stmt, v, id);
+      }
+    }
     const assigned = stmt ? assignedNames(stmt) : new Set();
     const props = stmt ? assignedProps(stmt) : new Set();
     const stmtHasCall = stmt ? containsCall(stmt) : true;
