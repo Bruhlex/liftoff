@@ -2382,7 +2382,7 @@ class Lifter {
     switch (m) {
       // RequireObjectCoercible of a destructuring source: a property read of the pattern throws the
       // same way, only an empty pattern (`{} = v`, the value then dropped) needs it spelled out
-      case 'DESTRUCTURE_CHECK': { const v = pop(); if (v && typeof v === 'object' && !v.__marker) { const c = t.cloneNode(v, true); c.__coercible = true; push(c); } else push(v); return; }
+      case 'DESTRUCTURE_CHECK': { const v = this.peek(stack); if (v && typeof v === 'object' && !v.__marker) v.__coercible = true; return; }
       case 'NOP': case 'TRY_POP': case 'FINALLY_ENTER': case 'FINALLY_END':
         return;
       case 'DEBUGGER': emit(t.debuggerStatement()); return;
@@ -2616,7 +2616,10 @@ class Lifter {
       case 'FUSED_BINOP': push(this.binary(e.op, this.regId(state, operand & 0xffff), constAt(operand >>> 16))); return;
       case 'UNARY': push(t.unaryExpression(e.op, pop())); return;
       case 'VOID': push(t.unaryExpression('void', pop())); return;
-      case 'TO_NUMERIC': case 'TO_PROPERTY_KEY': return; // coercions: identity for source recovery
+      case 'TO_NUMERIC': return; // a coercion: identity for source recovery
+      // the key of an object destructuring, coerced before the target is evaluated: marked, so
+      // that the emitter can put the destructuring back together
+      case 'TO_PROPERTY_KEY': { const v = this.peek(stack); if (v && typeof v === 'object') v.__propertyKey = true; return; }
       // (tagged: only an increment is an update `++x`, which also works on BigInts; `x + 1` does not)
       case 'INC_VALUE': { const b = t.binaryExpression('+', pop(), t.numericLiteral(1)); b.__inc = true; push(b); return; }
       case 'DEC_VALUE': { const b = t.binaryExpression('-', pop(), t.numericLiteral(1)); b.__inc = true; push(b); return; }

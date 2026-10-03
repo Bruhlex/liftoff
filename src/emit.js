@@ -1100,6 +1100,39 @@ function stripRedundantStrict(file) {
 const assignsOwnName = (fn) => !!fn.id && containsNode(fn, (x) =>
   (t.isAssignmentExpression(x) && t.isIdentifier(x.left, { name: fn.id.name })) || (t.isUpdateExpression(x) && t.isIdentifier(x.argument, { name: fn.id.name })));
 
+/**
+ * An object destructuring assignment with a computed key and a member target, which the VM
+ * evaluates step by step (the key is coerced to a property key right away, the lifter marks it):
+ *   const s = src(); const k = key(); const o = obj(); const p = prop(); o[p] = s[k];
+ *   ->  ({ [key()]: obj()[prop()] } = src());
+ * Written as statements, `key()`'s `toString` would run only at the read, after `obj()`.
+ */
+function restoreKeyedDestructuring(body) {
+  const decl1 = (st) => (t.isVariableDeclaration(st) && st.kind !== 'var' && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && st.declarations[0].init ? st.declarations[0] : null);
+  for (let i = 1; i < body.length; i++) {
+    const kd = decl1(body[i]), sd = decl1(body[i - 1]);
+    if (!kd || !kd.init.__propertyKey || !sd) continue;
+    // temporaries of the target, then `T = s[k]`
+    let j = i + 1;
+    const temps = new Map();
+    while (j < body.length && decl1(body[j])) { temps.set(decl1(body[j]).id.name, decl1(body[j]).init); j++; }
+    const fin = body[j];
+    const a = fin && t.isExpressionStatement(fin) && t.isAssignmentExpression(fin.expression, { operator: '=' }) ? fin.expression : null;
+    if (!a || !t.isMemberExpression(a.right) || !a.right.computed || !t.isIdentifier(a.right.object, { name: sd.id.name }) || !t.isIdentifier(a.right.property, { name: kd.id.name })) continue;
+    const rest = body.slice(j + 1);
+    const names = [sd.id.name, kd.id.name, ...temps.keys()];
+    if (names.some((n) => rest.some((x) => referencesName(x, n)) || countRefs(fin, n) !== 1)) continue;
+    // the target with its temporaries put back in place
+    let target = t.cloneNode(a.left, true);
+    t.traverseFast(target, (x) => {
+      for (const key of ['object', 'property']) if (t.isIdentifier(x[key]) && temps.has(x[key].name)) x[key] = temps.get(x[key].name);
+    });
+    if (t.isIdentifier(target) && temps.has(target.name)) continue;
+    const pattern = t.objectPattern([t.objectProperty(kd.init, target, true)]);
+    body.splice(i - 1, j - i + 2, t.expressionStatement(t.assignmentExpression('=', pattern, sd.init)));
+  }
+}
+
 /** a return statement of this function (returns of nested functions don't count) */
 const containsReturn = (node) => containsOwn([node], (n) => t.isReturnStatement(n));
 
@@ -1236,6 +1269,7 @@ function cleanup(file) {
     'BlockStatement|Program'(path) {
       const body = path.node.body;
       mergeLetDeclarations(body);
+      restoreKeyedDestructuring(body);
       for (let i = 0; i < body.length; i++) {
         const st = body[i];
         if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && t.isFunctionExpression(st.declarations[0].init) && st.declarations[0].init.id && st.declarations[0].init.id.name === st.declarations[0].id.name && !assignsOwnName(st.declarations[0].init)) {
