@@ -2398,7 +2398,12 @@ class Lifter {
       }
       case 'PUSH_THIS': case 'PUSH_LEXICAL_THIS':
         if (state.skipPushThis === pc) { state.skipPushThis = null; return; } // the value of `super(...)`, already on the stack
-        { const th = t.thisExpression(); if (m === 'PUSH_LEXICAL_THIS') th.__lexical = true; push(th); }
+        {
+          const th = t.thisExpression();
+          if (m === 'PUSH_LEXICAL_THIS') th.__lexical = true;
+          if (pc > 0 && this.mnem(state.instrs[pc - 1][0]) === 'SUPER_CALL') th.__superResult = true; // the value of super(...)
+          push(th);
+        }
         return;
       case 'PUSH_NEW_TARGET': push(t.metaProperty(t.identifier('new'), t.identifier('target'))); return;
       case 'PUSH_ARGUMENTS': state.usesArguments = true; push(t.identifier('arguments')); return;
@@ -2412,7 +2417,7 @@ class Lifter {
         // in a derived constructor a dropped `this` is the check that `this` is initialized
         // (`super[super()]` reads `this` before calling super)
         // (an arrow's dropped `this` is the source's `this;`, which throws before super() too)
-        if (t.isThisExpression(v) && (state.prog.derived || v.__lexical) && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.thisExpression())); return; }
+        if (t.isThisExpression(v) && !v.__superResult && (state.prog.derived || v.__lexical) && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.thisExpression())); return; }
         if (v && v.__coercible && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.assignmentExpression('=', t.objectPattern([]), v))); return; }
         if (!stack.includes(v) && !(state.alive && state.alive.has(v)) && !isDroppable(v)) this.emitStatement(state, stack, emit, t.expressionStatement(v));
         return;
