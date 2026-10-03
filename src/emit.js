@@ -364,6 +364,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
     if (t.isDirectiveLiteral(n)) { delete n.extra; if (/^use\\x20strict$/.test(n.value)) n.value = 'use strict'; }
     if ((t.isClassMethod(n) || t.isClassPrivateMethod(n)) && n.body.directives) n.body.directives = n.body.directives.filter((d) => d.value.value !== 'use strict'); // implied in class bodies
   });
+  stripRedundantStrict(file);
   // the cleanup passes enable each other (e.g. a removed parameter copy exposes a default
   // parameter check); iterate to a fixpoint
   let code = null;
@@ -1050,6 +1051,27 @@ function stripIllegalStrict(file) {
     if (n.params.every((p) => t.isIdentifier(p))) return;
     n.body.directives = n.body.directives.filter((d) => d.value.value !== 'use strict');
   });
+}
+
+/** `"use strict"` of a function inside strict code (a strict function, a class, a strict
+ *  program) changes nothing: drop it. (It also changes `fn.toString()`: equal functions at
+ *  different depths would otherwise print differently.) */
+function stripRedundantStrict(file) {
+  const isStrictDir = (d) => d.value.value === 'use strict';
+  const walk = (n, strict) => {
+    if (!n || typeof n.type !== 'string') return;
+    if (t.isProgram(n)) strict = strict || n.directives.some(isStrictDir);
+    if (t.isClass(n)) strict = true;
+    if (t.isFunction(n) && t.isBlockStatement(n.body)) {
+      if (strict) n.body.directives = n.body.directives.filter((d) => !isStrictDir(d));
+      else strict = n.body.directives.some(isStrictDir);
+    }
+    for (const k of t.VISITOR_KEYS[n.type] || []) {
+      const v = n[k];
+      if (Array.isArray(v)) v.forEach((c) => walk(c, strict)); else walk(v, strict);
+    }
+  };
+  walk(file.program || file, false);
 }
 
 /** a return statement of this function (returns of nested functions don't count) */

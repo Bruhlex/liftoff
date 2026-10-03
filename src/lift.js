@@ -1244,9 +1244,12 @@ class Lifter {
       restore({ declaredOnly: true });
       const jpc = this.firstJumpAt(state, H, L);
       const jm = jpc < L ? this.mnem(instrs[jpc][0]) : null;
-      if (jm && NUM_JUMP.has(jm) && probe.stmts.length === 0 && jumps[jpc] > L) {
+      // (a `for (let ...)` condition may evaluate expressions before its test, `a.push(f), i < 5`)
+      const pre = state.forLet.has(H) && probe.stmts.every((x) => t.isExpressionStatement(x)) ? probe.stmts.map((x) => x.expression) : null;
+      if (jm && NUM_JUMP.has(jm) && (probe.stmts.length === 0 || pre) && jumps[jpc] > L) {
         condEnd = jpc;
         condInfo = this.condFromJump(state, jm, instrs[jpc][1], probe.stack);
+        if (probe.stmts.length) condInfo.pre = pre;
       }
     }
     const loopRec = { header: H, exit: exitDefault, update: null, label: null, back: L };
@@ -1264,17 +1267,32 @@ class Lifter {
       const updExprs = updateExpressions(upd);
       let test = condInfo.cond;
       if (condInfo.jumpWhenTrue) test = this.negate(test);
+      if (condInfo.pre) test = t.sequenceExpression([...condInfo.pre, test]);
       if (updExprs.every(Boolean)) {
         // the declaration of the loop variables right before the loop becomes the init
         const frame = this.frameForEnter(state, fl.enterA !== null ? fl.enterA : H - 1 - fl.slots.length);
         const names = new Set(fl.slots.map((sl) => this.slotName(state, frame, sl)).filter((n) => t.isIdentifier(n)).map((n) => n.name));
         const inits = [];
+        // registers declared among them (`for (let i = 0, f = () => i; ...)`) join the init when
+        // nothing reads them after the loop
+        const regOf = new Map([...state.regNames].map(([r, n]) => [n, r]));
+        const readAfter = (r) => state.instrs.some(([op, operand], q) => q > L && operand === r && /^(LOAD_REG|REG_)/.test(this.mnem(op)));
+        const joins = (d) => t.isIdentifier(d.id) && (names.has(d.id.name) || (regOf.has(d.id.name) && !readAfter(regOf.get(d.id.name))));
+        let slotInits = 0;
         while (outStmts.length) {
           const last = outStmts[outStmts.length - 1];
-          if (t.isVariableDeclaration(last) && last.kind !== 'var' && last.declarations.every((d) => t.isIdentifier(d.id) && names.has(d.id.name))) { inits.unshift(...last.declarations); outStmts.pop(); }
-          else break;
+          if (t.isVariableDeclaration(last) && last.kind !== 'var' && last.declarations.every(joins)) {
+            inits.unshift(...last.declarations);
+            slotInits += last.declarations.filter((d) => names.has(d.id.name)).length;
+            outStmts.pop();
+          } else if (t.isExpressionStatement(last) && t.isAssignmentExpression(last.expression, { operator: '=' }) && t.isIdentifier(last.expression.left) &&
+                     regOf.has(last.expression.left.name) && !readAfter(regOf.get(last.expression.left.name))) {
+            // `r = v` of a register declared further up: the declaration there becomes unused
+            inits.unshift(t.variableDeclarator(t.identifier(last.expression.left.name), last.expression.right));
+            outStmts.pop();
+          } else break;
         }
-        if (inits.length === names.size) {
+        if (slotInits === names.size) {
           const update = updExprs.length === 0 ? null : updExprs.length === 1 ? updExprs[0] : t.sequenceExpression(updExprs);
           emit(this.labelled(loopRec, t.forStatement(t.variableDeclaration('let', inits), test, update, t.blockStatement(body.stmts))));
           return { stack, next: Math.max(exit, L + 1) };
@@ -1286,6 +1304,8 @@ class Lifter {
       emit(this.labelled(loopRec, t.whileStatement(test, t.blockStatement([...body.stmts, ...upd.stmts]))));
       return { stack, next: Math.max(exit, L + 1) };
     }
+    // a condition with statements before its test is only taken apart for `for (let ...)`
+    if (condInfo && condInfo.pre) { condInfo = null; condEnd = -1; }
     // `continue` in a for loop jumps to the update code at the end of the body; if some jump
     // targets such a straight-line tail, it becomes the update clause of a `for` statement
     let U = -1;
@@ -1867,7 +1887,7 @@ class Lifter {
         return null;
       }
       let nextStart = q + 13;
-      while (nextStart < tp && !elementHead(nextStart)) nextStart++;
+      while (nextStart < tp && !elementHead(nextStart) && !restElement(nextStart)) nextStart++;
       // copies of the next element's target (`LOAD x; STORE_REG t` pairs right before its
       // next()) belong to that element, not to this one's store
       let storeEnd = nextStart;
@@ -1885,7 +1905,9 @@ class Lifter {
     let allDecl = true, anyDecl = false;
     const declaredTargets = [];
     const targetTemps = []; // registers folded into element targets, hidden once the pattern is certain
-    for (const seg of segs) {
+    let carry = []; // statements that prepare the next (rest) element's target
+    for (let si = 0; si < segs.length; si++) {
+      const seg = segs[si];
       if (seg.hole) { elements.push(null); continue; }
       const elemId = t.identifier(fresh(`__elem${this.tempCounter++}`));
       elemId.__noTemp = true;
@@ -1896,7 +1918,8 @@ class Lifter {
         prefixStmts = pre.stmts;
       }
       const res = this.liftRange(state, seg.from, seg.to, [elemId]);
-      res.stmts = [...prefixStmts, ...res.stmts];
+      res.stmts = [...carry, ...prefixStmts, ...res.stmts];
+      carry = [];
       // drop the done-flag stores, and the bookkeeping of a nested pattern (`[[a, b]] = x`: the
       // inner iterator init is flagged for removal, its done flag is a hidden register)
       const hiddenNames = new Set([...state.hiddenRegs].map((r) => this.regName(state, r)));
@@ -1904,6 +1927,8 @@ class Lifter {
         (x.expression.left.name === this.regName(state, doneReg) || hiddenNames.has(x.expression.left.name) && t.isLiteral(x.expression.right))));
       if (res.stack.length) return null;
       if (stmts.length === 0) { elements.push(null); continue; }
+      // `[x, ...{}[yield]]`: the code after x's store up to the rest loop computes the rest target
+      if (segs[si + 1] && segs[si + 1].rest && stmts.length > 1 && referencesName(stmts[0], elemId.name) && !stmts.slice(1).some((x) => referencesName(x, elemId.name))) carry = stmts.splice(1);
       // `rT = obj; rK = key; obj2[rK] = __elem`  ->  target `obj[key]` (the compiler copies the
       // target object and/or computed key into temporaries before the element's next())
       // (`const rK = yield;` when the key needs a statement of its own)
@@ -2370,7 +2395,9 @@ class Lifter {
         if (c && c.t === 'program') { const n = t.identifier(`__program_${c.id}`); n.__programRef = c.id; push(n); return; }
         push(constAt(operand)); return;
       }
-      case 'PUSH_THIS': case 'PUSH_LEXICAL_THIS': push(t.thisExpression()); return;
+      case 'PUSH_THIS': case 'PUSH_LEXICAL_THIS':
+        if (state.skipPushThis === pc) { state.skipPushThis = null; return; } // the value of `super(...)`, already on the stack
+        push(t.thisExpression()); return;
       case 'PUSH_NEW_TARGET': push(t.metaProperty(t.identifier('new'), t.identifier('target'))); return;
       case 'PUSH_ARGUMENTS': state.usesArguments = true; push(t.identifier('arguments')); return;
       case 'PUSH_SCOPE': { const s = t.identifier('__scope'); s.__marker = 'scope'; push(s); return; }
@@ -2380,6 +2407,9 @@ class Lifter {
       case 'DROP': {
         if (state.skipNextDrop) { state.skipNextDrop = false; return; }
         const v = pop();
+        // in a derived constructor a dropped `this` is the check that `this` is initialized
+        // (`super[super()]` reads `this` before calling super)
+        if (t.isThisExpression(v) && state.prog.derived && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.thisExpression())); return; }
         if (v && v.__coercible && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.assignmentExpression('=', t.objectPattern([]), v))); return; }
         if (!stack.includes(v) && !(state.alive && state.alive.has(v)) && !isDroppable(v)) this.emitStatement(state, stack, emit, t.expressionStatement(v));
         return;
@@ -2745,6 +2775,13 @@ class Lifter {
         const args = this.popN(stack, argc);
         pop(); // the callee, always `super`
         if (operand === 1) { push(t.arrayExpression(args)); return; }
+        // `super(...)` used as a value (`super[super()]`): SUPER_CALL; PUSH_THIS; <not DROP>
+        const M = (q) => (q < state.instrs.length ? this.mnem(state.instrs[q][0]) : null);
+        if (M(pc + 1) === 'PUSH_THIS' && M(pc + 2) !== 'DROP' && state.jumps[pc + 1] === undefined) {
+          push(t.callExpression(t.super(), args));
+          state.skipPushThis = pc + 1;
+          return;
+        }
         this.emitStatement(state, stack, emit, t.expressionStatement(t.callExpression(t.super(), args)));
         return;
       }
