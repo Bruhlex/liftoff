@@ -674,9 +674,33 @@ class Lifter {
     state.scopeStacks = stacks;
   }
 
+  /**
+   * Slots of a scope that are declared (DECLARE_TDZ) but never initialized in it, such as the
+   * copy of `x` in the head of `for (let x of expr)` that `expr` sees: every access throws.
+   */
+  tdzOnlySlots(state, root) {
+    const enters = new Set([root]);
+    if (state.frameAlias) for (const [e, r] of state.frameAlias) if (r === root) enters.add(e);
+    const declared = new Set(), stored = new Set();
+    for (let pc = 0; pc < state.instrs.length; pc++) {
+      const st = state.scopeStacks && state.scopeStacks[pc];
+      if (!st || !st.length || !enters.has(st[st.length - 1])) continue;
+      const m = this.mnem(state.instrs[pc][0]), operand = state.instrs[pc][1];
+      if (m === 'DECLARE_TDZ') declared.add(operand & 0xffff);
+      else if (m === 'STORE_LOCAL' || m === 'STORE_LOCAL_CONST' || m === 'BIND_THIS_SLOT') stored.add(operand);
+      else if (m === 'STORE_SCOPE' && operand >>> 16 === 0) stored.add(operand & 0xffff);
+      else if (m === 'TEMPLATE' || m === 'COND_TEMPLATE') return new Set(); // (may write slots)
+    }
+    return new Set([...declared].filter((sl) => !stored.has(sl)));
+  }
+
   frameForEnter(state, enterPc) {
     if (state.frameAlias && state.frameAlias.has(enterPc)) enterPc = state.frameAlias.get(enterPc);
-    if (!state.enterFrames.has(enterPc)) state.enterFrames.set(enterPc, new Frame(this.frameCounter++));
+    if (!state.enterFrames.has(enterPc)) {
+      const f = new Frame(this.frameCounter++);
+      f.tdzOnly = this.tdzOnlySlots(state, enterPc);
+      state.enterFrames.set(enterPc, f);
+    }
     return state.enterFrames.get(enterPc);
   }
 
@@ -1268,6 +1292,23 @@ class Lifter {
         condEnd = jpc;
         condInfo = this.condFromJump(state, jm, instrs[jpc][1], probe.stack);
         if (probe.stmts.length) condInfo.pre = pre;
+      }
+      // a `for (let ...)` condition with a short-circuit (`run && (x = 1, f)`): up to the jump
+      // that leaves the loop, provided all jumps before it stay inside the condition
+      if (!condInfo && state.forLet.has(H)) {
+        let X = -1;
+        for (let q = H; q < L; q++) if (NUM_JUMP.has(this.mnem(instrs[q][0])) && jumps[q] > L) { X = q; break; }
+        const contained = X > H && Object.entries(jumps).every(([f, to]) => Number(f) < H || Number(f) >= X || (to > Number(f) && to <= X));
+        if (contained) {
+          const restore2 = this.snapshot(state);
+          const p2 = this.liftRange(state, H, X, []);
+          restore2({ declaredOnly: true });
+          if (p2.stack.length === 1 && p2.stmts.every((x) => t.isExpressionStatement(x))) {
+            condEnd = X;
+            condInfo = this.condFromJump(state, this.mnem(instrs[X][0]), instrs[X][1], p2.stack);
+            if (p2.stmts.length) condInfo.pre = p2.stmts.map((x) => x.expression);
+          }
+        }
       }
     }
     const loopRec = { header: H, exit: exitDefault, update: null, label: null, back: L };
@@ -2610,6 +2651,12 @@ class Lifter {
         const slot = operand & 0xffff, depth = operand >>> 16;
         const frame = this.frameAt(state, depth);
         const n = this.slotName(state, frame, slot);
+        // a binding that is never initialized: the read always throws
+        if (frame && frame.tdzOnly && frame.tdzOnly.has(slot)) {
+          const msg = `Cannot access '${t.isIdentifier(n) ? n.name : 'variable'}' before initialization`;
+          push(t.callExpression(t.arrowFunctionExpression([], t.blockStatement([t.throwStatement(t.newExpression(t.identifier('ReferenceError'), [t.stringLiteral(msg)]))])), []));
+          return;
+        }
         if (t.isIdentifier(n)) { this.flushAssignmentsTo(state, stack, emit, n.name); n.__scopeRef = true; }
         push(n);
         return;
