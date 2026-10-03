@@ -18,7 +18,6 @@
 const parser = require('@babel/parser');
 const traverse = require('@babel/traverse').default;
 const t = require('@babel/types');
-const generate = require('@babel/generator').default;
 
 function parse(code) {
   const opts = { sourceType: 'script', allowReturnOutsideFunction: true, errorRecovery: true, plugins: ['bigInt'] };
@@ -26,7 +25,7 @@ function parse(code) {
   try { return parser.parse(code, opts); } catch { return parser.parse(code, { ...opts, allowAwaitOutsideFunction: true }); }
 }
 
-const gen = (node) => generate(node, { compact: true, comments: false }).code;
+const { gen } = require('./ast');
 
 // ---------------------------------------------------------------------------
 // 1. Find the interpreter loops

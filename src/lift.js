@@ -18,6 +18,7 @@
  * recursively and inlined at their MAKE_CLOSURE site.
  */
 const t = require('@babel/types');
+const { gen, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
@@ -58,31 +59,7 @@ function optionalChain(expr, root) {
   return built;
 }
 
-function countIdentity(tree, node) {
-  let c = 0;
-  const walk = (n) => {
-    if (!n || typeof n.type !== 'string') return;
-    if (n === node) { c++; return; }
-    for (const k of t.VISITOR_KEYS[n.type] || []) { const v = n[k]; if (Array.isArray(v)) v.forEach(walk); else walk(v); }
-  };
-  walk(tree);
-  return c;
-}
 
-function replaceIdentity(tree, node, rep) {
-  if (tree === node) return rep;
-  const walk = (n) => {
-    if (!n || typeof n.type !== 'string') return;
-    for (const k of t.VISITOR_KEYS[n.type] || []) {
-      const v = n[k];
-      if (Array.isArray(v)) v.forEach((x, i) => { if (x === node) v[i] = t.cloneNode(rep); else walk(x); });
-      else if (v === node) n[k] = t.cloneNode(rep);
-      else walk(v);
-    }
-  };
-  walk(tree);
-  return tree;
-}
 
 function maxStackLeaf(x) {
   if (!x) return -1;
@@ -96,8 +73,6 @@ const UNCOND_JUMP = new Set(['JMP', 'JMP_UNWIND']);
 // small AST helpers
 // ---------------------------------------------------------------------------
 
-const isIdentName = (s) => typeof s === 'string' && /^[A-Za-z_$][\w$]*$/.test(s) && !RESERVED.has(s);
-const RESERVED = new Set('break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof new null return super switch this throw true try typeof var void while with yield let static implements interface package private protected public await'.split(' '));
 
 function constNode(c) {
   if (!c) return t.identifier('undefined');
@@ -251,17 +226,7 @@ function usesArgumentsBeyondSlice(body, n) {
   return all > slices;
 }
 
-function countIdent(nodes, name) {
-  let c = 0;
-  for (const n of [].concat(nodes)) t.traverseFast(n, (x) => { if (t.isIdentifier(x, { name })) c++; });
-  return c;
-}
 
-function referencesName(node, name) {
-  let hit = false;
-  t.traverseFast(node, (n) => { if (t.isIdentifier(n, { name })) hit = true; });
-  return hit;
-}
 
 function assignedNames(stmt) {
   const names = new Set();
@@ -1772,7 +1737,6 @@ class Lifter {
       if (breaks) { swEnd = defaultTarget; targets.pop(); }
     }
     // discriminant: all tests `X === Y` with identical X
-    const { gen } = require('./locate');
     let disc = null;
     const caseExprs = [];
     const allEq = tests.every((x) => t.isBinaryExpression(x.cond, { operator: '===' }));
@@ -2852,7 +2816,6 @@ class Lifter {
   }
 
   applyTemplate(state, e, operand, stack, emit) {
-    const { gen } = require('./locate');
     const popped = [];
     for (let i = 0; i < e.pops; i++) popped.push(this.pop(stack));
     const ctx = { state, operand, popped };
@@ -2912,7 +2875,7 @@ class Lifter {
       if (!self) return e;
     }
     // tag`...${x}...`: first argument is a frozen template object with raw strings
-    if (args.length && args[0] && args[0].__templateRaw && (thisObj === null || ((t.isMemberExpression(callee)) && require('./locate').gen(callee.object) === require('./locate').gen(thisObj)))) {
+    if (args.length && args[0] && args[0].__templateRaw && (thisObj === null || ((t.isMemberExpression(callee)) && gen(callee.object) === gen(thisObj)))) {
       const cooked = args[0].__templateCooked || args[0].elements;
       const raw = args[0].__templateRaw;
       const exprs = args.slice(1);
@@ -2926,7 +2889,6 @@ class Lifter {
       return t.callExpression(callee, args);
     }
     // method call: callee is `thisObj.prop`
-    const { gen } = require('./locate');
     if ((t.isMemberExpression(callee) || t.isOptionalMemberExpression(callee)) && gen(callee.object) === gen(thisObj)) {
       return t.callExpression(callee, args);
     }
@@ -3084,4 +3046,4 @@ class Lifter {
   }
 }
 
-module.exports = { Lifter, Frame, isPure, isIdentName, constNode, referencesName };
+module.exports = { Lifter, Frame, isPure, constNode };

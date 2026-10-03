@@ -19,8 +19,8 @@ const t = require('@babel/types');
 const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
-const { gen } = require('./locate');
-const { Lifter, Frame, isIdentName, referencesName } = require('./lift');
+const { Lifter, Frame } = require('./lift');
+const { gen, isIdentName, referencesName, countIdent: countRefs } = require('./ast');
 
 // ---------------------------------------------------------------------------
 // host analysis
@@ -313,7 +313,6 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   const unreferenced = ex.programs.filter((p) => p.source === 'main' && !liftedIds.has(p.id) && !lifter.active.has(p.id));
   const extra = [];
   for (const p of unreferenced) {
-    if (isReferencedByLifted(p, lifter)) continue;
     // dead code: its lifting problems (e.g. unknown captured scopes) are notes in the comment,
     // not warnings about the decompiled program
     const notes = [];
@@ -1064,8 +1063,6 @@ function referencesThisOrArgs(node) {
   return hit;
 }
 
-function isReferencedByLifted() { return false; }
-
 // ---------------------------------------------------------------------------
 // cleanup passes
 // ---------------------------------------------------------------------------
@@ -1782,12 +1779,6 @@ function mergeLetDeclarations(body) {
       if (i < 0) break;
     }
   }
-}
-
-function countRefs(node, name) {
-  let c = 0;
-  t.traverseFast(node, (n) => { if (t.isIdentifier(n, { name })) c++; });
-  return c;
 }
 
 module.exports = { assemble, cleanup };
