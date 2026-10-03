@@ -450,20 +450,39 @@ function argumentsToParams(path) {
   const P = n.params.length;
   const uses = [];
   let other = false;
+  // the default values themselves (`arguments[i] = X` of the leading default checks): an
+  // `arguments[k]` read in X reads the arguments object, not the later parameter k
+  // in the VM a parameter beyond `length` and `arguments[k]` are the same storage: in the default
+  // value of parameter j, `arguments[k]` with k < j is the earlier parameter k (already set,
+  // possibly by its own default), with k >= j a later one, which only the arguments object holds yet
+  const defaultValues = new Map(); // default value node -> index of the parameter it initializes
+  for (const st of n.body.body.slice(leadingBareLets(n.body.body))) {
+    if (!t.isIfStatement(st) || !t.isBinaryExpression(st.test, { operator: '===' }) || !t.isMemberExpression(st.test.left) || !t.isIdentifier(st.test.left.object, { name: 'arguments' }) ||
+        !t.isNumericLiteral(st.test.left.property)) break;
+    t.traverseFast(st.consequent, (x) => { if (t.isAssignmentExpression(x)) defaultValues.set(x.right, st.test.left.property.value); });
+  }
+  let inDefault = null;
   const visit = (node, parent) => {
     if (!node || typeof node.type !== 'string' || other) return;
     if (node !== n && t.isFunction(node) && !t.isArrowFunctionExpression(node)) return;
     // `delete arguments[i]` has no parameter equivalent
     if (t.isUnaryExpression(node, { operator: 'delete' }) && t.isMemberExpression(node.argument) && t.isIdentifier(node.argument.object, { name: 'arguments' })) { other = true; return; }
     if (t.isIdentifier(node, { name: 'arguments' })) {
-      if (t.isMemberExpression(parent) && parent.object === node && parent.computed && t.isNumericLiteral(parent.property) && Number.isInteger(parent.property.value)) uses.push(parent);
-      else other = true;
+      if (t.isMemberExpression(parent) && parent.object === node && parent.computed && t.isNumericLiteral(parent.property) && Number.isInteger(parent.property.value)) {
+        // with a non-simple parameter list `arguments` is unmapped: `arguments[i]` of a declared
+        // parameter i, and reads of later parameters in default values, stay reads of the arguments object
+        const k = parent.property.value;
+        if (k >= P && (inDefault === null || k < inDefault)) uses.push(parent);
+      } else other = true;
       return;
     }
+    const outer = inDefault;
+    if (defaultValues.has(node)) inDefault = defaultValues.get(node);
     for (const k of t.VISITOR_KEYS[node.type] || []) {
       const v = node[k];
       if (Array.isArray(v)) v.forEach((c) => visit(c, node)); else visit(v, node);
     }
+    inDefault = outer;
   };
   visit(n.body, null);
   if (other || !uses.length) return;
@@ -553,9 +572,15 @@ function readObjectPattern(body, i, src, ctx) {
     if (a && t.isObjectPattern(a.left) && !a.left.properties.length && t.isIdentifier(a.right, { name: src })) continue;
     if (d && d.init) {
       const name = d.id.name;
-      // `let r = src; r = src.x;`: a register that first held the source, overwritten right away
+      // `let r = src; ... r = src.x;`: a register that first held the source and is overwritten
+      // before anything reads it
       const na = assign(nx);
-      if (t.isIdentifier(d.init, { name: src }) && na && t.isIdentifier(na.left, { name }) && !referencesName(na.right, name)) { ctx.bare.add(name); continue; }
+      if (t.isIdentifier(d.init, { name: src })) {
+        const k = body.findIndex((x, j) => j > i && referencesName(x, name));
+        const ka = k > 0 ? assign(body[k]) : null;
+        const writes = ka && (t.isIdentifier(ka.left, { name }) || ((t.isArrayPattern(ka.left) || t.isObjectPattern(ka.left)) && name in t.getBindingIdentifiers(ka.left)));
+        if (writes && !referencesName(ka.right, name)) { ctx.bare.add(name); continue; }
+      }
       // `const k = f(); const x = src[k];`: a computed key held in a temporary used once
       const nxInit = decl1(nx) ? decl1(nx).init : na ? na.right : null;
       if (nxInit && t.isMemberExpression(nxInit) && nxInit.computed && t.isIdentifier(nxInit.object, { name: src }) && t.isIdentifier(nxInit.property, { name }) &&
