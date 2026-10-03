@@ -95,38 +95,42 @@
         functions back where they were called.</li>
     </ol>
     <p>The page reports how much of the bytecode came back as real code. An instruction counts as
-      not recovered when its opcode could not be identified or when it had to be emitted as a
-      placeholder call such as <code>__UNKNOWN_12(...)</code>. A file without an obfuscator.io
-      virtual machine is passed through webcrack only, which undoes string arrays, control-flow
-      flattening and similar transformations where it recognises them.</p>
-    <p>Nothing about a build is hard-coded: opcode numbers, byte format, alphabet and dispatcher
-      are inferred from each file. The decompiler was tested on 136 builds, including 120 builds of
-      programs of up to 900 lines under eight option sets, and every decompiled program prints the
-      same output as its obfuscated build.</p>
+      not recovered when its opcode could not be identified, when it had to be emitted as a
+      placeholder call such as <code>__UNKNOWN_12(...)</code>, or when a jump could not be
+      structured. A file without an obfuscator.io virtual machine is passed through webcrack
+      only.</p>
+    <p>Liftoff was written for the bachelor thesis <em>How to CAPTCHA: The Influence of AI,
+      Obfuscation, and Browser Features to Bot Detection in the Web</em> (Technical University
+      of Munich, 2026), which describes how it works and how it was evaluated.</p>
+
     <h2>Supported versions</h2>
-    <p>Written and tested for the VM mode of obfuscator.io's hosted service, using builds made
-      with the <strong>free tier</strong> of the dashboard:</p>
+    <p>The VM mode of obfuscator.io's hosted service, <strong>free tier</strong> of the
+      dashboard:</p>
     <ul>
-      <li>16 builds from July 2026, made with the earlier code generator;</li>
-      <li>120 builds made on 29 September 2026 with <strong>version 8.0.6</strong> and the
-        <em>VM Low</em> preset, alone and combined with string arrays, control-flow flattening,
-        expression obfuscation, raw output and the Node target.</li>
+      <li>the earlier code generator (July 2026);</li>
+      <li><strong>versions 8.0.6 and 8.0.8</strong>, preset <em>VM Low</em>, alone and combined
+        with string arrays, control-flow flattening, numbers to expressions, split strings,
+        transform object keys, raw output and the Browser or Node target.</li>
     </ul>
-    <p>The separate hardening options of the virtual machine (for example encoded jumps,
-      stateful opcodes or a split dispatcher) were not part of these builds and are untested.
-      Later versions of the obfuscator may change the instruction set; unknown handlers are then
-      reported instead of guessed, and the recovery figure drops below 100&nbsp;%.</p>
-    <p class="note"><strong>Scope and limits.</strong> The result is a readable program that
-      behaves like the original, not the original source: local names, comments and the choice
-      between equivalent forms are lost in compilation. Only obfuscator.io's VM mode is supported.
-      To read the bytecode, the decompiler runs the file's own loader code inside a Web Worker of
-      this page, with network and DOM globals hidden. This is not a security sandbox; only decompile
-      files you are willing to run.</p>
-    <p class="note"><strong>Run.</strong> Both panes can run their program in a Web Worker of this
-      page and show its console output, so the decompiled program can be checked against the
-      obfuscated one. A worker has no DOM, and Node modules (<code>require</code>) are not
-      available; a program counts as finished when no timer or request is left, and is stopped
-      after 15&nbsp;s otherwise. Run only code you trust.</p>
+
+    <h2>Limitations</h2>
+    <ul>
+      <li>Only obfuscator.io's VM mode is decompiled; other virtual machines need their own
+        analysis.</li>
+      <li>The paid hardening options of the virtual machine (for example encoded jumps, stateful
+        opcodes or a split dispatcher) are untested. Later versions may change the instruction
+        set; unknown handlers are then reported instead of guessed, and the recovery figure
+        drops below 100&nbsp;%.</li>
+      <li>The result behaves like the original but is not the original source: local names,
+        comments and the choice between equivalent forms are lost in compilation.</li>
+      <li>Large files (about 1&nbsp;MB and more) take minutes in the browser; the command-line
+        version is several times faster.</li>
+      <li>To read the bytecode, the file's own loader runs in a Web Worker of this page, with
+        network and DOM globals hidden. This is not a security sandbox: only decompile files
+        you are willing to run.</li>
+      <li><strong>Run</strong> executes a program in a Web Worker without DOM and without Node
+        modules (<code>require</code>); it stops after 15&nbsp;s. Run only code you trust.</li>
+    </ul>
   </section>
 </main>
 
