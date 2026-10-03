@@ -16,6 +16,23 @@
  * that produce statements (stores, drops of impure values, returns, ...) append
  * to the current region's statement list. Nested functions are lifted
  * recursively and inlined at their MAKE_CLOSURE site.
+ *
+ * Stack values carry facts as `__` properties on their nodes. (A node DUP'd onto the stack twice
+ * is one object, so a flag set on it holds for both copies.)
+ *   __marker       not a value: an iterator ('iter'), for..in keys, scope / super placeholders
+ *   __builder      an object, array or class literal still being built (members are added in place)
+ *   __underflow    `undefined` produced by popping an empty stack
+ *   __dup          duplicated by DUP; a dropped duplicated member read is a compiler artifact
+ *   __global       read of a global variable (an unknown one may throw)
+ *   __scopeRef     read of a captured (scope) variable
+ *   __lexical      `this` of an arrow, read from the enclosing function
+ *   __superResult  `this` after super(...) ran: its value, not the check that `this` exists
+ *   __inc          `x + 1` / `x - 1` from INC_VALUE / DEC_VALUE: may become `++x` (also for BigInt)
+ *   __coercible    checked by DESTRUCTURE_CHECK: dropping it keeps the check as `({} = v)`
+ *   __propertyKey  coerced by TO_PROPERTY_KEY: the key of an object destructuring (read in emit.js)
+ *   __toString     `String(x)` from TO_STRING: becomes part of a template literal (read in emit.js)
+ *   __noTemp, __brandHelper, __staticInit, __templateRaw, __templateCooked, __programRef,
+ *   __methodKind, __stmtsMark: bookkeeping of single idioms, see where they are set
  */
 const t = require('@babel/types');
 const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, negate, staticKey, iife, thunkValue, exprStmts } = require('./ast');
@@ -67,6 +84,10 @@ function isBookkeepingStore(s, names, { literalOnly = false, anyValueFor = null 
   if (name === anyValueFor) return true;
   return names.has(name) && (t.isLiteral(v) || (!literalOnly && t.isIdentifier(v)));
 }
+
+/** a stack entry that stands for no ordinary value: a marker, a literal under construction,
+ *  or the `undefined` of an underflow */
+const isPseudo = (v) => !!v && !!(v.__marker || v.__builder || v.__underflow);
 
 /** values left on a lifted range's stack that have effects become statements */
 function drainImpure(res) {
@@ -523,6 +544,11 @@ class Lifter {
     if (!state.regNames.has(r)) state.regNames.set(r, fresh(`r${r}`));
     return state.regNames.get(r);
   }
+  /** the register a lifted name stands for (registers are named `rN` by regName), or undefined */
+  regOfName(state, name) {
+    for (const [r, n] of state.regNames) if (n === name) return r;
+    return undefined;
+  }
   regId(state, r) {
     state.usedRegs.add(r);
     return t.identifier(this.regName(state, r));
@@ -553,7 +579,7 @@ class Lifter {
         const u = stack[j];
         // (a literal under construction keeps its node; values in it that read `name` are spilled)
         if (u && u.__builder && (t.isObjectExpression(u) || t.isArrayExpression(u))) { this.spillBuilder(u, emit, new Set([name])); continue; }
-        if (!u || u.__marker || u.__builder || u.__underflow || t.isFunction(u) || t.isClass(u)) continue;
+        if (!u || isPseudo(u) || t.isFunction(u) || t.isClass(u)) continue;
         if (isPure(u) && !referencesName(u, name)) continue;
         const id = t.identifier(this.tmpName());
         emit(t.variableDeclaration('const', [t.variableDeclarator(id, u)]));
@@ -1350,9 +1376,9 @@ class Lifter {
         const inits = [];
         // registers declared among them (`for (let i = 0, f = () => i; ...)`) join the init when
         // nothing reads them after the loop
-        const regOf = new Map([...state.regNames].map(([r, n]) => [n, r]));
         const readAfter = (r) => (state.regLoads.get(r) || []).some((q) => q > L);
-        const joins = (d) => t.isIdentifier(d.id) && (names.has(d.id.name) || (regOf.has(d.id.name) && !readAfter(regOf.get(d.id.name))));
+        const unreadRegister = (name) => { const r = this.regOfName(state, name); return r !== undefined && !readAfter(r); };
+        const joins = (d) => t.isIdentifier(d.id) && (names.has(d.id.name) || unreadRegister(d.id.name));
         let slotInits = 0;
         while (outStmts.length) {
           const last = outStmts[outStmts.length - 1];
@@ -1361,7 +1387,7 @@ class Lifter {
             slotInits += last.declarations.filter((d) => names.has(d.id.name)).length;
             outStmts.pop();
           } else if (t.isExpressionStatement(last) && t.isAssignmentExpression(last.expression, { operator: '=' }) && t.isIdentifier(last.expression.left) &&
-                     regOf.has(last.expression.left.name) && !readAfter(regOf.get(last.expression.left.name))) {
+                     unreadRegister(last.expression.left.name)) {
             // `r = v` of a register declared further up: the declaration there becomes unused
             inits.unshift(t.variableDeclarator(t.identifier(last.expression.left.name), last.expression.right));
             outStmts.pop();
@@ -1538,7 +1564,7 @@ class Lifter {
       case 'JMP_NOT_NULLISH': { const v = this.pop(stack); return { cond: t.binaryExpression('!=', v, t.nullLiteral()), jumpWhenTrue: true, nullishOf: v }; }
       case 'JMP_NULLISH': { const v = this.pop(stack); return { cond: t.binaryExpression('==', v, t.nullLiteral()), jumpWhenTrue: true, nullishOf: v }; }
       case 'COND_TEMPLATE': {
-        const e = this.entry(state.instrs[state.__condPc][0]);
+        const e = this.entry(state.instrs[state.condPc][0]);
         const need = Math.max(e.taken.pops, e.fall.pops, maxStackLeaf(e.cond) + 1);
         const popped = [];
         for (let i = 0; i < need; i++) popped.push(this.pop(stack));
@@ -1592,7 +1618,7 @@ class Lifter {
     }
     const base = stack.slice();
     let info;
-    state.__condPc = pc;
+    state.condPc = pc;
     if (m === 'FUSED_JMPT' || m === 'FUSED_JMPF') info = this.fusedCond(state, pc);
     else info = this.condFromJump(state, m, instrs[pc][1], stack);
     const { cond, jumpWhenTrue } = info;
@@ -1994,9 +2020,10 @@ class Lifter {
       // `rT = obj; rK = key; obj2[rK] = __elem`  ->  target `obj[key]` (the compiler copies the
       // target object and/or computed key into temporaries before the element's next())
       // (`const rK = yield;` when the key needs a statement of its own)
-      const tempDef = (st) => (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) && /^r\d+$/.test(st.expression.left.name)
+      const isReg = (name) => this.regOfName(state, name) !== undefined;
+      const tempDef = (st) => (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) && isReg(st.expression.left.name)
         ? { name: st.expression.left.name, value: st.expression.right }
-        : t.isVariableDeclaration(st) && st.kind !== 'var' && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && /^r\d+$/.test(st.declarations[0].id.name) && st.declarations[0].init
+        : t.isVariableDeclaration(st) && st.kind !== 'var' && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && isReg(st.declarations[0].id.name) && st.declarations[0].init
           ? { name: st.declarations[0].id.name, value: st.declarations[0].init } : null);
       while (stmts.length >= 2 && tempDef(stmts[0])) {
         const last = stmts[stmts.length - 1];
@@ -2011,7 +2038,7 @@ class Lifter {
         if (slots.length !== 1 || countIdent(stmts.slice(1), tmp) !== 1) break;
         tgt[slots[0]] = tmpValue;
         stmts.shift();
-        targetTemps.push(Number(tmp.slice(1)));
+        targetTemps.push(this.regOfName(state, tmp));
       }
       if (stmts.length !== 1) return null;
       const st = stmts[0];
@@ -2176,7 +2203,7 @@ class Lifter {
         (t.isMemberExpression(v) && (!v.computed || t.isLiteral(v.property)) && simple(v.object));
       for (let i = 0; i < stack.length; i++) {
         const v = stack[i];
-        if (!v || typeof v !== 'object' || v.__marker || v.__builder || v.__underflow || simple(v)) continue;
+        if (!v || typeof v !== 'object' || isPseudo(v) || simple(v)) continue;
         let shared = false;
         t.traverseFast(stmt, (x) => { if (x === v) shared = true; });
         if (!shared) continue;
@@ -2192,7 +2219,7 @@ class Lifter {
     for (let i = 0; i < stack.length; i++) {
       const v = stack[i];
       if (v && v.__builder && (t.isObjectExpression(v) || t.isArrayExpression(v)) && (!stmt || stmtHasCall || assigned.size || props.size)) { this.spillBuilder(v, emit, assigned, props); continue; }
-      if (!v || v.__underflow || v.__marker || v.__builder) continue;
+      if (!v || isPseudo(v)) continue;
       if (t.isLiteral(v) || t.isThisExpression(v) || t.isFunctionExpression(v) || t.isArrowFunctionExpression(v)) continue;
       if (t.isSpreadElement(v)) {
         // `...x` waiting for its call/array: spill the operand, keep the spread marker
@@ -2215,7 +2242,7 @@ class Lifter {
         const own = assignedNames(t.expressionStatement(v));
         for (let j = 0; j < i && own.size; j++) {
           const u = stack[j];
-          if (!u || u.__underflow || u.__marker || u.__builder || t.isLiteral(u) || t.isFunction(u)) continue;
+          if (!u || isPseudo(u) || t.isLiteral(u) || t.isFunction(u)) continue;
           if (![...own].some((nm) => referencesName(u, nm))) continue;
           const uid = t.identifier(this.tmpName());
           emit(t.variableDeclaration('const', [t.variableDeclarator(uid, u)]));
