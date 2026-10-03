@@ -7,6 +7,9 @@ Liftoff turns JavaScript protected with the **Virtualization (VM)** option of
 command-line tool for Node and as a static web page that runs the same pipeline
 entirely in the browser.
 
+**Try it online: <https://bruhlex.github.io/liftoff/>** (nothing is uploaded; the
+decompiler runs in your browser).
+
 ```js
 // a virtualized build of a small program, after decompilation
 const factorial = y => y <= 1 ? 1 : y * factorial(y - 1);
@@ -45,26 +48,6 @@ the lifter had to emit a placeholder call such as `__UNKNOWN_12(...)`.
 A file without an obfuscator.io VM is passed through webcrack only, which undoes
 string arrays, control-flow flattening, constant hiding and formatting where it
 recognises them. The output header says so.
-
-## Web app
-
-`docs/` is a self-contained static site (GitHub Pages ready). Paste or drop a
-virtualized build, press *Decompile*, copy or download the result. Nothing is
-uploaded; the decompiler runs in a Web Worker of the page.
-
-```
-npm install --ignore-scripts
-npm run build          # bundles the decompiler into docs/decompiler.worker.js
-npm run serve          # http://localhost:8000
-```
-
-**Deploying.** Push the repository and enable GitHub Pages for the `docs/` folder
-(*Settings → Pages → Branch: main, folder: /docs*). Any other static host works as
-well; the site needs no server code.
-
-To read the bytecode, the decompiler runs the file's own loader code. In the
-browser this happens inside the worker, with network and DOM globals hidden from
-it. That is not a security sandbox: only decompile files you are willing to run.
 
 ## Command line
 
@@ -151,6 +134,9 @@ test/               tests
 * In the browser, inputs with extremely deep expression chains may skip webcrack's
   full deobfuscation (the CLI retries those in a large-stack worker thread); the
   decompiler then continues with the unminified source.
+* To read the bytecode, Liftoff runs the file's own loader code (in the browser
+  inside a Web Worker, with network and DOM globals hidden). This is not a security
+  sandbox: only decompile files you are willing to run.
 
 ## Licence
 
