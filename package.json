@@ -23,7 +23,7 @@
     "build": "node build.mjs",
     "serve": "node build.mjs && python3 -m http.server 8000 --directory docs",
     "test:corpus": "node test/corpus.js",
-    "test:web": "node test/web/run.mjs && node test/web/.shim-bundle.cjs"
+    "test:web": "node test/web/run.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

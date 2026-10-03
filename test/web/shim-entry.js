@@ -16,4 +16,5 @@ const { decompile } = require('../../src/pipeline');
     } catch (e) { fail++; console.log('FAIL', name, e.message); }
   }
   console.log(`same ${same}  different ${diff}  failed ${fail}`);
+  process.exitCode = diff || fail ? 1 : 0;
 })();
