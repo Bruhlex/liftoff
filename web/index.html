@@ -115,21 +115,12 @@
 
     <h2>Limitations</h2>
     <ul>
-      <li>Only obfuscator.io's VM mode is decompiled; other virtual machines need their own
-        analysis.</li>
       <li>The paid hardening options of the virtual machine (for example encoded jumps, stateful
         opcodes or a split dispatcher) are untested. Later versions may change the instruction
         set; unknown handlers are then reported instead of guessed, and the recovery figure
         drops below 100&nbsp;%.</li>
-      <li>The result behaves like the original but is not the original source: local names,
-        comments and the choice between equivalent forms are lost in compilation.</li>
       <li>Large files (about 1&nbsp;MB and more) take minutes in the browser; the command-line
         version is several times faster.</li>
-      <li>To read the bytecode, the file's own loader runs in a Web Worker of this page, with
-        network and DOM globals hidden. This is not a security sandbox: only decompile files
-        you are willing to run.</li>
-      <li><strong>Run</strong> executes a program in a Web Worker without DOM and without Node
-        modules (<code>require</code>); it stops after 15&nbsp;s. Run only code you trust.</li>
     </ul>
   </section>
 </main>
