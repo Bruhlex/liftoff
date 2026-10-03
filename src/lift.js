@@ -18,7 +18,7 @@
  * recursively and inlined at their MAKE_CLOSURE site.
  */
 const t = require('@babel/types');
-const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity } = require('./ast');
+const { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode } = require('./ast');
 
 const NUM_JUMP = new Set(['JMPF', 'JMPT', 'JMPF_KEEP', 'JMPT_KEEP', 'JMPF_POP2', 'JMPT_POP2', 'JMP_NOT_NULLISH', 'JMP_NULLISH', 'FUSED_JMPT', 'FUSED_JMPF', 'COND_TEMPLATE']);
 
@@ -278,9 +278,7 @@ function readsProps(v, props) {
 }
 
 function containsCall(node) {
-  let hit = false;
-  t.traverseFast(node, (n) => { if (t.isCallExpression(n) || t.isNewExpression(n) || t.isAwaitExpression(n) || t.isYieldExpression(n)) hit = true; });
-  return hit;
+  return containsNode(node, (n) => t.isCallExpression(n) || t.isNewExpression(n) || t.isAwaitExpression(n) || t.isYieldExpression(n));
 }
 
 // ---------------------------------------------------------------------------
@@ -504,7 +502,7 @@ class Lifter {
         stack[j] = id;
       }
     };
-    const hasTarget = (n) => { let hit = false; t.traverseFast(n, (x) => { if (isTarget(x)) hit = true; }); return hit; };
+    const hasTarget = (n) => containsNode(n, isTarget);
     for (let i = 0; i < stack.length; i++) {
       const v = stack[i];
       if (v && typeof v.type === 'string' && !t.isFunction(v) && !t.isClass(v) && hasTarget(v)) {

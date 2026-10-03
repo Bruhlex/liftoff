@@ -51,4 +51,16 @@ function replaceIdentity(tree, node, rep) {
   return tree;
 }
 
-module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity };
+/** does any node below `root` (itself included) satisfy `pred`? */
+function containsNode(root, pred) {
+  let hit = false;
+  t.traverseFast(root, (n) => { if (!hit && pred(n)) hit = true; });
+  return hit;
+}
+
+/** remove a variable declarator, and its declaration when it was the only one */
+function removeDeclarator(p) {
+  if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
+}
+
+module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, removeDeclarator };

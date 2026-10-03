@@ -25,7 +25,7 @@ function parse(code) {
   try { return parser.parse(code, opts); } catch { return parser.parse(code, { ...opts, allowAwaitOutsideFunction: true }); }
 }
 
-const { gen } = require('./ast');
+const { gen, containsNode } = require('./ast');
 
 // ---------------------------------------------------------------------------
 // 1. Find the interpreter loops
@@ -216,14 +216,6 @@ function declaredLocals(stmts) {
     }
   }
   return map;
-}
-
-function containsNode(root, pred) {
-  let hit = false;
-  t.traverseFast(root, (n) => {
-    if (!hit && pred(n)) hit = true;
-  });
-  return hit;
 }
 
 function collectIdentifiers(root) {

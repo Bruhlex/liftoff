@@ -20,7 +20,10 @@ const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('./naming');
 const { Lifter, Frame } = require('./lift');
-const { gen, isIdentName, referencesName, countIdent: countRefs } = require('./ast');
+const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, containsNode, removeDeclarator } = require('./ast');
+
+// output: comments kept, strings with minimal escaping
+const GEN_OPTS = { comments: true, compact: false, jsescOption: { minimal: true } };
 
 // ---------------------------------------------------------------------------
 // host analysis
@@ -354,7 +357,6 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   // initializer functions that use the WeakMaps are folded into the classes
   const left = privateLeft ? privateLeft() : 0;
   if (left) warn(`${left} reference(s) to lowered private members could not be restored`);
-  t.traverseFast(file, (n) => { if (t.isClassPrivateMethod(n) && n.body.directives) n.body.directives = n.body.directives.filter((d) => d.value.value !== 'use strict'); });
   stripIllegalStrict(file);
   t.traverseFast(file, (n) => {
     if (t.isDirectiveLiteral(n)) { delete n.extra; if (/^use\\x20strict$/.test(n.value)) n.value = 'use strict'; }
@@ -366,12 +368,12 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   for (let round = 0; round < 4; round++) {
     cleanup(file);
     inlinePrivateComputedKeys(file);
-    const next = generate(file, { comments: true, compact: false, jsescOption: { minimal: true } }).code;
+    const next = generate(file, GEN_OPTS).code;
     if (next === code) break;
     code = next;
   }
   // readable names for synthetic identifiers (cosmetic, last)
-  if (prettyNames && !process.env.VMDEC_NONAMES && renameSynthetic(file)) code = generate(file, { comments: true, compact: false, jsescOption: { minimal: true } }).code;
+  if (prettyNames && !process.env.VMDEC_NONAMES && renameSynthetic(file)) code = generate(file, GEN_OPTS).code;
   log(`${replaced} host call site(s) replaced, ${unreferenced.length} unreferenced program(s)`);
   return { code, replaced };
 }
@@ -406,13 +408,13 @@ function containsOwn(stmts, pred) {
 
 /** may evaluating the expression change state? (calls, assignments, yield, await, new, delete) */
 function hasEffects(node) {
-  let hit = false;
-  t.traverseFast(node, (x) => {
-    if (t.isCallExpression(x) || t.isOptionalCallExpression(x) || t.isNewExpression(x) || t.isAssignmentExpression(x) || t.isUpdateExpression(x) ||
-        t.isYieldExpression(x) || t.isAwaitExpression(x) || t.isTaggedTemplateExpression(x) || t.isUnaryExpression(x, { operator: 'delete' })) hit = true;
-  });
-  return hit;
+  return containsNode(node, (x) => t.isCallExpression(x) || t.isOptionalCallExpression(x) || t.isNewExpression(x) || t.isAssignmentExpression(x) || t.isUpdateExpression(x) ||
+    t.isYieldExpression(x) || t.isAwaitExpression(x) || t.isTaggedTemplateExpression(x) || t.isUnaryExpression(x, { operator: 'delete' }));
 }
+
+/** a lowering helper that throws "Cannot read private member ..." (a brand check); the install
+ *  of a #method brand ("Cannot install private ...") is a different helper */
+const isBrandCheckFn = (n) => containsNode(n, (x) => t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value));
 
 /** number of `let x;` declarations without initializer at the start of a body */
 function leadingBareLets(body) {
@@ -634,7 +636,7 @@ function destructuredParams(path) {
  *   const k = this.#f; class C { [k] = 1; get #f() {} }   ->   class C { [this.#f] = 1; ... }
  */
 function inlinePrivateComputedKeys(file) {
-  const hasPrivate = (e) => { let hit = false; t.traverseFast(e, (x) => { if (t.isPrivateName(x)) hit = true; }); return hit; };
+  const hasPrivate = (e) => containsNode(e, (x) => t.isPrivateName(x));
   // the single reference is the computed key of a class member: put the expression there
   const inlineInto = (b, init) => {
     if (!b || b.referencePaths.length !== 1) return false;
@@ -660,7 +662,7 @@ function inlinePrivateComputedKeys(file) {
       if (!b || b.constantViolations.length !== 1 || !b.path.isVariableDeclarator() || (b.path.node.init && !t.isIdentifier(b.path.node.init, { name: 'undefined' }))) return;
       if (!inlineInto(b, n.right)) return;
       p.parentPath.remove();
-      if (b.path.parentPath.node.declarations.length === 1) b.path.parentPath.remove(); else b.path.remove();
+      removeDeclarator(b.path);
     },
   });
 }
@@ -859,16 +861,15 @@ function restorePrivateMembers(file, privateSymbols) {
         const b = p.scope.getBinding(n.id.name);
         if (b && !b.constantViolations.length) {
           inHelpers.set(b.identifier, inKey);
-          if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
+          removeDeclarator(p);
           return;
         }
       }
-      let hit = false;
-      t.traverseFast(n.init, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) hit = true; });
+      const hit = isBrandCheckFn(n.init);
       if (hit) {
         const b = p.scope.getBinding(n.id.name);
         if (b) brandHelpers.add(b.identifier);
-        if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
+        removeDeclarator(p);
       }
     },
     // helper assigned inside an expression:  (rN = function (o) { ... }, rN(this).#m())
@@ -885,8 +886,7 @@ function restorePrivateMembers(file, privateSymbols) {
         if (seq.expressions.length === 1) p.parentPath.replaceWith(seq.expressions[0]);
         return;
       }
-      let hit = false;
-      t.traverseFast(e.right, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) hit = true; });
+      const hit = isBrandCheckFn(e.right);
       if (!hit) return;
       const b = p.scope.getBinding(e.left.name);
       if (!b || b.constantViolations.some((v) => v.node !== e && !(t.isAssignmentExpression(v.node) && t.isFunction(v.node.right)))) return;
@@ -904,8 +904,7 @@ function restorePrivateMembers(file, privateSymbols) {
         const b = p.scope.getBinding(e.left.name);
         if (b && b.constantViolations.length === 1) { inHelpers.set(b.identifier, inKey); p.remove(); return; }
       }
-      let hit = false;
-      t.traverseFast(e.right, (x) => { if (t.isStringLiteral(x) && /private member|private method/.test(x.value) && !/install private/.test(x.value)) hit = true; });
+      const hit = isBrandCheckFn(e.right);
       if (hit) {
         const b = p.scope.getBinding(e.left.name);
         if (b && b.constantViolations.length === 1) { brandHelpers.add(b.identifier); p.remove(); }
@@ -932,9 +931,7 @@ function restorePrivateMembers(file, privateSymbols) {
       }
       // immediately invoked brand check: (o => SYM in o ? o : {...throws...})(x) / (function (o) {...})(x) -> x
       if (t.isFunction(p.node.callee) && p.node.arguments.length === 1 && p.node.callee.params.length === 1) {
-        let hit = false;
-        t.traverseFast(p.node.callee, (x) => { if (t.isStringLiteral(x) && /private (member|method|field)/.test(x.value)) hit = true; });
-        if (hit) { p.replaceWith(p.node.arguments[0]); return; }
+        if (containsNode(p.node.callee, (x) => t.isStringLiteral(x) && /private (member|method|field)/.test(x.value))) { p.replaceWith(p.node.arguments[0]); return; }
       }
       // rN(obj) -> obj   (only calls of that very helper binding, names are reused across functions)
       if (t.isIdentifier(p.node.callee) && p.node.arguments.length === 1) {
@@ -1028,11 +1025,8 @@ function stripIllegalStrict(file) {
   });
 }
 
+/** a return statement of this function (returns of nested functions don't count) */
 function containsReturn(node) {
-  let hit = false;
-  t.traverseFast(node, (n) => { if (t.isReturnStatement(n)) hit = true; });
-  // returns nested inside functions don't count
-  if (!hit) return false;
   let real = false;
   const walk = (n) => {
     if (!n || typeof n.type !== 'string' || real) return;
@@ -1274,8 +1268,7 @@ function cleanup(file) {
       }
       for (const nm of names) {
         const b = bodyPath.scope.getBinding(nm);
-        const vd = b.path.parentPath;
-        if (vd.node.declarations.length === 1) vd.remove(); else b.path.remove();
+        removeDeclarator(b.path);
       }
       n.left = t.variableDeclaration('const', [t.variableDeclarator(first.expression.left)]);
       n.body.body.shift();
@@ -1350,7 +1343,7 @@ function narrowDeclarations(file) {
         if (!replacement) return;
         const fn = p.getFunctionParent();
         if (replacement !== 'for') S.replaceWith(replacement);
-        if (p.parent.declarations.length === 1) p.parentPath.remove(); else p.remove();
+        removeDeclarator(p);
         touched.add(fn ? fn.node : file);
       },
     });
@@ -1424,7 +1417,7 @@ function loopCleanup(file) {
       const home = fnOf(p);
       if (b.referencePaths.some((r) => fnOf(r) !== home)) return;
       for (const r of b.referencePaths) r.replaceWith(t.thisExpression());
-      if (p.parent.declarations.length === 1) p.parentPath.remove(); else p.remove();
+      removeDeclarator(p);
     },
   });
   const breaksOf = (loop, kind) => {
@@ -1557,11 +1550,9 @@ function removeDefinition(b, def) {
   if (def.viaAssignment) {
     if (def.defPath.parentPath.isExpressionStatement()) def.defPath.parentPath.remove();
     else def.defPath.replaceWith(t.cloneNode(def.expr, true)); // `(r = e)` nested in an expression -> `e`
-    const vd = b.path.parentPath;
-    if (vd.node.declarations.length === 1) vd.remove(); else b.path.remove();
+    removeDeclarator(b.path);
   } else {
-    const vd = def.defPath.parentPath;
-    if (vd.node.declarations.length === 1) vd.remove(); else def.defPath.remove();
+    removeDeclarator(def.defPath);
   }
 }
 
@@ -1597,8 +1588,7 @@ function functionHolderBinding(scope, name, b) {
     const stmt = def.defPath.getStatementParent();
     if (!stmt.isExpressionStatement()) return false;
     if (target !== name) scope.rename(name, target);
-    const vd = b.path.parentPath;
-    if (vd.node.declarations.length === 1) vd.remove(); else b.path.remove();
+    removeDeclarator(b.path);
     stmt.replaceWith(decl);
   } else {
     const vd = def.defPath.parentPath;
@@ -1699,7 +1689,7 @@ function convertDefaultParams(file) {
         const p = n.params[pi];
         if (t.isAssignmentPattern(p)) {
           // the host function already has this default: the check is a no-op
-          if (!(isInertDefault(p.right) && generate(p.right).code === generate(d.value).code)) break;
+          if (!(isInertDefault(p.right) && sameExpr(p.right, d.value))) break;
         } else n.params[pi] = t.assignmentPattern(t.identifier(d.name), d.value);
         body.splice(i, 1);
         changed = true;
