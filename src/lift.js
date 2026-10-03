@@ -956,6 +956,7 @@ class Lifter {
       }
       state.curPc = pc;
       state.nextIsDrop = pc + 1 < end && this.mnem(state.instrs[pc + 1][0]) === 'DROP';
+      state.curStmts = stmts;
       this.step(state, m, op, operand, stack, emit, pc);
       state.nextIsDrop = false;
       pc++;
@@ -2830,6 +2831,7 @@ class Lifter {
         const ctor = pop();
         const cls = t.classExpression(t.isStringLiteral(name) && isIdentName(name.value) ? t.identifier(name.value) : null, null, t.classBody([]));
         cls.__builder = true;
+        cls.__stmtsMark = { stmts: state.curStmts, length: state.curStmts ? state.curStmts.length : 0 };
         if (t.isFunctionExpression(ctor)) {
           cls.body.body.push(t.classMethod('constructor', t.identifier('constructor'), ctor.params, ctor.body));
         }
@@ -2837,8 +2839,16 @@ class Lifter {
         return;
       }
       case 'CLASS_EXTENDS': {
-        const sup = pop();
+        let sup = pop();
         const cls = this.peek(stack);
+        // statements emitted while the heritage was evaluated (`extends (f = () => C, B)`) belong
+        // into the extends clause: there the class's own name is its inner binding
+        const mark = cls && cls.__stmtsMark;
+        if (t.isClassExpression(cls) && mark && mark.stmts === state.curStmts && state.curStmts.length > mark.length &&
+            state.curStmts.slice(mark.length).every((x) => t.isExpressionStatement(x))) {
+          const exprs = state.curStmts.splice(mark.length).map((x) => x.expression);
+          sup = t.sequenceExpression([...exprs, sup]);
+        }
         if (t.isClassExpression(cls)) cls.superClass = sup;
         else this.emitStatement(state, stack, emit, t.expressionStatement(t.callExpression(t.memberExpression(t.identifier('Object'), t.identifier('setPrototypeOf')), [cls, sup])));
         return;
