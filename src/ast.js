@@ -58,9 +58,16 @@ function containsNode(root, pred) {
   return hit;
 }
 
+/** the names of all identifiers below `root` */
+function identifiersIn(root) {
+  const names = new Set();
+  t.traverseFast(root, (n) => { if (t.isIdentifier(n)) names.add(n.name); });
+  return names;
+}
+
 /** remove a variable declarator, and its declaration when it was the only one */
 function removeDeclarator(p) {
   if (p.parentPath.node.declarations.length === 1) p.parentPath.remove(); else p.remove();
 }
 
-module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, removeDeclarator };
+module.exports = { gen, sameExpr, isIdentName, countIdent, referencesName, countIdentity, replaceIdentity, containsNode, identifiersIn, removeDeclarator };

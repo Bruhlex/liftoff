@@ -13,6 +13,7 @@
  */
 const traverse = require('@babel/traverse').default;
 const t = require('@babel/types');
+const { identifiersIn } = require('./ast');
 
 const SYNTHETIC = /^(r\d+|s\d+_\d+|a\d+_?|item\d*|key\d*|_t\d+|e\d+|rest)$/;
 // names the obfuscator generated (`_0x4df810`, `vmHK`); renamed only below the top level, where
@@ -211,12 +212,6 @@ function candidateFor(binding) {
 }
 
 /** every identifier name occurring in the subtree of `scopePath` */
-function namesIn(node) {
-  const s = new Set();
-  t.traverseFast(node, (n) => { if (t.isIdentifier(n)) s.add(n.name); });
-  return s;
-}
-
 /**
  * `pretty` (default) also names values by how they are used, parameters by what their callers
  * pass, and obfuscator-generated names below the top level; without it only the basic rules
@@ -239,7 +234,7 @@ function renameSynthetic(file, opts = {}) {
     const cands = candidateFor(b);
     if (!cands) continue;
     const scope = b.scope;
-    const used = namesIn(scope.block);
+    const used = identifiersIn(scope.block);
     for (const base of cands.filter(Boolean)) {
       if (RESERVED.has(base) || !/^[A-Za-z_$][\w$]*$/.test(base)) continue;
       let name = base;

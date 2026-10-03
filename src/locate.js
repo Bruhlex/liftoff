@@ -25,7 +25,7 @@ function parse(code) {
   try { return parser.parse(code, opts); } catch { return parser.parse(code, { ...opts, allowAwaitOutsideFunction: true }); }
 }
 
-const { gen, containsNode } = require('./ast');
+const { gen, containsNode, identifiersIn } = require('./ast');
 
 // ---------------------------------------------------------------------------
 // 1. Find the interpreter loops
@@ -216,14 +216,6 @@ function declaredLocals(stmts) {
     }
   }
   return map;
-}
-
-function collectIdentifiers(root) {
-  const names = new Set();
-  t.traverseFast(root, (n) => {
-    if (t.isIdentifier(n)) names.add(n.name);
-  });
-  return names;
 }
 
 function isSlotRead(node, progName) {
@@ -447,7 +439,7 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
     t.traverseFast(st, (n) => {
       if (roles.arrowFlag || !t.isIfStatement(n)) return;
       if (!containsNode(n.consequent, (m) => t.isAssignmentExpression(m) && t.isIdentifier(m.left, { name: roles.this }))) return;
-      const ids = [...collectIdentifiers(n.test)].filter((x) => flagLocals.includes(x) && x !== roles.strict);
+      const ids = [...identifiersIn(n.test)].filter((x) => flagLocals.includes(x) && x !== roles.strict);
       if (ids.length) roles.arrowFlag = ids[0];
     });
   }
@@ -723,4 +715,4 @@ function locate(code, { log = () => {} } = {}) {
   return { ast, code, globalName, nsName, nsKey, factoryPath, plain, genCopy, handlers, roles, helpers, yields };
 }
 
-module.exports = { locate, parse, gen, collectHandlers, numericCaseValue, containsNode, collectIdentifiers, declaredLocals, prologueStatements };
+module.exports = { locate, parse, gen, collectHandlers, numericCaseValue, containsNode, declaredLocals, prologueStatements };
