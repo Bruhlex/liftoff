@@ -511,8 +511,20 @@ class Lifter {
         else walk(c);
       }
     };
+    // values below a flushed assignment are evaluated before it: spill those with effects
+    const spillBelow = (i) => {
+      for (let j = 0; j < i; j++) {
+        const u = stack[j];
+        if (!u || u.__marker || u.__builder || u.__underflow || isPure(u) || t.isFunction(u) || t.isClass(u)) continue;
+        const id = t.identifier(this.tmpName());
+        emit(t.variableDeclaration('const', [t.variableDeclarator(id, u)]));
+        stack[j] = id;
+      }
+    };
+    const hasTarget = (n) => { let hit = false; t.traverseFast(n, (x) => { if (isTarget(x)) hit = true; }); return hit; };
     for (let i = 0; i < stack.length; i++) {
       const v = stack[i];
+      if (v && typeof v.type === 'string' && !t.isFunction(v) && !t.isClass(v) && hasTarget(v)) spillBelow(i);
       if (isTarget(v)) { walk(v.right); flush(v); stack[i] = t.identifier(name); }
       else walk(v);
     }
@@ -866,12 +878,12 @@ class Lifter {
       if (UNCOND_JUMP.has(m)) {
         const tgt = state.jumps[pc];
         const jr = this.jumpStatement(state, tgt, end);
-        if (jr === 'end') { pc++; continue; }
+        if (jr === 'end') { pc = this.nextReachable(state, pc + 1, end); continue; }
         if (jr) {
           this.flushImpure(stack, emit, state);
           emit(jr);
           // code between here and the next jump target is unreachable unless jumped into
-          pc++;
+          pc = this.nextReachable(state, pc + 1, end);
           continue;
         }
         if (tgt > pc && tgt <= end) { pc = tgt; continue; } // skip dead code
@@ -902,6 +914,18 @@ class Lifter {
         continue;
       }
 
+      // postfix `r++` used as a value: LOAD_REG r; TO_NUMERIC; DUP; INC_VALUE; STORE_REG r (the
+      // old value is ToNumeric(r), which `r++` yields, not r itself)
+      if (m === 'TO_NUMERIC' && pc + 3 < end && this.mnem(state.instrs[pc + 1][0]) === 'DUP' && /^(INC|DEC)_VALUE$/.test(this.mnem(state.instrs[pc + 2][0])) &&
+          this.mnem(state.instrs[pc + 3][0]) === 'STORE_REG' && pc > 0 && this.mnem(state.instrs[pc - 1][0]) === 'LOAD_REG' && state.instrs[pc - 1][1] === state.instrs[pc + 3][1] &&
+          stack.length && t.isIdentifier(stack[stack.length - 1], { name: this.regName(state, state.instrs[pc + 3][1]) }) && !state.tempValues.has(state.instrs[pc + 3][1])) {
+        const r = state.instrs[pc + 3][1];
+        stack.pop();
+        this.spillForStatement(state, stack, emit, t.expressionStatement(t.assignmentExpression('=', this.regId(state, r), t.numericLiteral(0))));
+        stack.push(t.updateExpression(this.mnem(state.instrs[pc + 2][0]) === 'INC_VALUE' ? '++' : '--', this.regId(state, r), false));
+        pc += 4;
+        continue;
+      }
       state.curPc = pc;
       state.nextIsDrop = pc + 1 < end && this.mnem(state.instrs[pc + 1][0]) === 'DROP';
       this.step(state, m, op, operand, stack, emit, pc);
@@ -909,6 +933,18 @@ class Lifter {
       pc++;
     }
     return { stmts, stack };
+  }
+
+  /** first pc at or after `from` that a jump or exception handler can reach (dead code after an
+   *  unconditional jump, e.g. `continue\nFOR1;`, is skipped) */
+  nextReachable(state, from, end) {
+    if (!state.reachTargets) {
+      state.reachTargets = new Set(Object.values(state.jumps).map(Number));
+      for (const [k, v] of Object.entries(state.tries || {})) { state.reachTargets.add(Number(k)); for (const x of v) if (x !== null) state.reachTargets.add(x); }
+    }
+    let q = from;
+    while (q < end && !state.reachTargets.has(q)) q++;
+    return q;
   }
 
   comment(text) {
@@ -1581,6 +1617,19 @@ class Lifter {
   // -------------------------------------------------------------------------
 
   trySwitch(state, pc, end, inStack, emit) {
+    // the case tests are probed by lifting them; a failed attempt must leave no trace in the state
+    const frames = () => [...state.chain, ...state.enterFrames.values()];
+    const saved = { declared: new Map(frames().map((f) => [f, new Set(f.declared)])), tempValues: new Map(state.tempValues), hiddenRegs: new Set(state.hiddenRegs) };
+    const r = this.trySwitchChain(state, pc, end, inStack, emit);
+    if (!r) {
+      for (const f of frames()) f.declared = saved.declared.has(f) ? saved.declared.get(f) : new Set();
+      state.tempValues = saved.tempValues;
+      state.hiddenRegs = saved.hiddenRegs;
+    }
+    return r;
+  }
+
+  trySwitchChain(state, pc, end, inStack, emit) {
     const { instrs, jumps } = state;
     // chain: test region (no statements, pushes 1) + JMPT -> Bi, repeated; then JMP -> D
     const tests = [];
@@ -1617,9 +1666,13 @@ class Lifter {
       if (j >= end) return null;
       const jm = this.mnem(instrs[j][0]);
       if (jm === 'JMPT') {
-        // a case test is a side-effect-free comparison; probing a region that stores or builds
-        // literals would mutate shared nodes (array/object/class builders)
-        for (let q = p; q < j; q++) if (/^(STORE_|ARR_|DEFINE_|OBJ_|SET|MAKE_|CALL|NEW|DELETE|TRY|ENTER_SCOPE|EXIT_SCOPE)/.test(this.mnem(instrs[q][0]))) return null;
+        // probing a region that stores or builds literals would mutate shared nodes (array/object/
+        // class builders); calls are fine, case tests are evaluated in order like the chain
+        for (let q = p; q < j; q++) {
+          const mq = this.mnem(instrs[q][0]);
+          if (mq === 'STORE_REG' && state.tempRegs.has(instrs[q][1])) continue; // the callee temp of `f(x)`
+          if (/^(STORE_|ARR_|DEFINE_|OBJ_|SET|MAKE_|DELETE|TRY|ENTER_SCOPE|EXIT_SCOPE)/.test(mq)) return null;
+        }
         const probe = this.liftRange(state, p, j, stack);
         if (probe.stmts.length || probe.stack.length !== stack.length + 1) return null;
         tests.push({ cond: probe.stack[probe.stack.length - 1], target: jumps[j], pc: j });
@@ -1629,7 +1682,8 @@ class Lifter {
       if (jm === 'JMP' && j === p) { defaultTarget = jumps[j]; p = j + 1; break; }
       return null;
     }
-    if (tests.length < 2 || defaultTarget === null) return null;
+    // (one case: `JMPT case; JMP default` is how only a switch compiles, an `if` uses JMPF)
+    if (!tests.length || defaultTarget === null) return null;
     const bodiesStart = p;
     const targets = [...new Set([...tests.map((x) => x.target), defaultTarget])].sort((a, b) => a - b);
     if (targets[0] !== bodiesStart || targets.some((x) => x > end)) return null;
@@ -1641,6 +1695,17 @@ class Lifter {
       if (lastPc >= targets[i] && UNCOND_JUMP.has(this.mnem(instrs[lastPc][0]))) {
         const tg = jumps[lastPc];
         if (tg > lastPc && tg <= end && (swEnd === end || tg === swEnd)) swEnd = tg;
+      }
+    }
+    // `break` at the end of the last case jumps to the next instruction; that is the switch end
+    // when an earlier case breaks to the same point
+    if (swEnd === end) {
+      const last = targets[targets.length - 1];
+      for (let q = end - 2; q >= last; q--) {
+        if (!UNCOND_JUMP.has(this.mnem(instrs[q][0])) || jumps[q] !== q + 1) continue;
+        const tg = q + 1;
+        if (Object.entries(jumps).some(([f, to]) => to === tg && Number(f) >= bodiesStart && Number(f) < last && UNCOND_JUMP.has(this.mnem(instrs[Number(f)][0])))) swEnd = tg;
+        break;
       }
     }
     // a switch without `default` jumps to the code behind it when no case matches; when a case

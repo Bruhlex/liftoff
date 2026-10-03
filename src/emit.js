@@ -765,7 +765,7 @@ function restorePrivateMembers(file, privateSymbols, warn) {
         }
         // any access with a lowered private key (`r.key`, `(r = obj).key`): the keys are unique random
         // names used only by the lowering, and every store object has been replaced by its instance
-        if (!n.computed && t.isIdentifier(n.property) && privateKeys.has(n.property.name)) {
+        if (!n.computed && t.isIdentifier(n.property) && (privateKeys.has(n.property.name) || (privateKeys.size + weakMaps.size && /^_?\$p[a-z]+_\d+$/.test(n.property.name)))) {
           p.replaceWith(t.memberExpression(n.object, t.privateName(t.identifier(privName(n.property.name)))));
         }
       },
