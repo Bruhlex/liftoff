@@ -366,6 +366,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   let code = null;
   for (let round = 0; round < 4; round++) {
     cleanup(file);
+    inlinePrivateComputedKeys(file);
     const next = generate(file, { comments: true, compact: false, jsescOption: { minimal: true } }).code;
     if (next === code) break;
     code = next;
@@ -597,6 +598,43 @@ function destructuredParams(path) {
 }
 
 /**
+ * A computed member key is evaluated ahead of the class into a temporary; one that reads a private
+ * name of the class (`[this.#f] = 1`) is only valid inside the class, so it goes back into the key:
+ *   const k = this.#f; class C { [k] = 1; get #f() {} }   ->   class C { [this.#f] = 1; ... }
+ */
+function inlinePrivateComputedKeys(file) {
+  const hasPrivate = (e) => { let hit = false; t.traverseFast(e, (x) => { if (t.isPrivateName(x)) hit = true; }); return hit; };
+  // the single reference is the computed key of a class member: put the expression there
+  const inlineInto = (b, init) => {
+    if (!b || b.referencePaths.length !== 1) return false;
+    const ref = b.referencePaths[0];
+    const member = ref.parentPath;
+    if (!(member.isClassProperty() || member.isClassMethod() || member.isClassPrivateProperty()) || member.node.key !== ref.node || !member.node.computed) return false;
+    ref.replaceWith(init);
+    return true;
+  };
+  traverse.cache.clear();
+  traverse(file, {
+    VariableDeclarator(p) {
+      const n = p.node;
+      if (!t.isIdentifier(n.id) || !n.init || !hasPrivate(n.init) || p.parentPath.node.declarations.length !== 1) return;
+      const b = p.scope.getBinding(n.id.name);
+      if (b && !b.constantViolations.length && inlineInto(b, n.init)) p.parentPath.remove();
+    },
+    // `let k; ... k = this.#f;`
+    AssignmentExpression(p) {
+      const n = p.node;
+      if (n.operator !== '=' || !t.isIdentifier(n.left) || !hasPrivate(n.right) || !p.parentPath.isExpressionStatement()) return;
+      const b = p.scope.getBinding(n.left.name);
+      if (!b || b.constantViolations.length !== 1 || !b.path.isVariableDeclarator() || (b.path.node.init && !t.isIdentifier(b.path.node.init, { name: 'undefined' }))) return;
+      if (!inlineInto(b, n.right)) return;
+      p.parentPath.remove();
+      if (b.path.parentPath.node.declarations.length === 1) b.path.parentPath.remove(); else b.path.remove();
+    },
+  });
+}
+
+/**
  * Instance fields of a derived class are initialized after `super()` by a function the compiler
  * creates outside the class and the constructor calls as `init.call(this)`:
  *
@@ -613,12 +651,22 @@ function foldDerivedFieldInitializers(file) {
       const body = cp.node.body.body;
       const ctor = body.find((m) => t.isClassMethod(m, { kind: 'constructor' }));
       if (!ctor) return;
-      const stmts = ctor.body.body;
-      // a base class runs its initializer first, a derived class right after super()
-      const superIdx = cp.node.superClass
-        ? stmts.findIndex((st) => t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isSuper(st.expression.callee))
-        : -1;
-      if (cp.node.superClass && superIdx < 0) return;
+      // a base class runs its initializer first, a derived class right after super(), which may
+      // also be called from an arrow function in the constructor (`const init = () => super();`)
+      const isSuperCall = (st) => t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isSuper(st.expression.callee);
+      let stmts = ctor.body.body;
+      let superIdx = -1;
+      if (cp.node.superClass) {
+        superIdx = stmts.findIndex(isSuperCall);
+        if (superIdx < 0) {
+          t.traverseFast(ctor.body, (x) => {
+            if (superIdx >= 0 || !t.isArrowFunctionExpression(x) || !t.isBlockStatement(x.body)) return;
+            const k = x.body.body.findIndex(isSuperCall);
+            if (k >= 0) { stmts = x.body.body; superIdx = k; }
+          });
+        }
+        if (superIdx < 0) return;
+      }
       // (uninitialized `let x;` declarations may come first; they have no effect)
       let callIdx = superIdx + 1;
       while (callIdx < stmts.length && t.isVariableDeclaration(stmts[callIdx]) && stmts[callIdx].declarations.every((d) => !d.init)) callIdx++;

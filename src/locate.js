@@ -21,13 +21,9 @@ const t = require('@babel/types');
 const generate = require('@babel/generator').default;
 
 function parse(code) {
-  return parser.parse(code, {
-    sourceType: 'script',
-    allowReturnOutsideFunction: true,
-    allowAwaitOutsideFunction: true,
-    errorRecovery: true,
-    plugins: ['bigInt'],
-  });
+  const opts = { sourceType: 'script', allowReturnOutsideFunction: true, errorRecovery: true, plugins: ['bigInt'] };
+  // a plain script first (there `await` can be an identifier); top-level await only as a fallback
+  try { return parser.parse(code, opts); } catch { return parser.parse(code, { ...opts, allowAwaitOutsideFunction: true }); }
 }
 
 const gen = (node) => generate(node, { compact: true, comments: false }).code;

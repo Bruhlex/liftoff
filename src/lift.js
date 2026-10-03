@@ -714,8 +714,14 @@ class Lifter {
         if (M(q) === 'EXIT_SCOPE' && M(q + 1) === 'PUSH_SCOPE' && M(q + 2) === 'ENTER_SCOPE') { T = q; break; }
       }
       if (T < 0) continue;
-      for (let i = 0; i < k; i++) if (M(T - k + i) !== 'LOAD_SCOPE' || (instrs[T - k + i][1] & 0xffff) !== slots[i] || (instrs[T - k + i][1] >>> 16) !== 0) ok = false;
-      for (let i = 0; i < k; i++) if (M(T + 3 + i) !== 'STORE_LOCAL') ok = false;
+      // the same slots, in any order; each STORE_LOCAL pops the value of the matching LOAD_SCOPE
+      const tailSlots = [];
+      for (let i = 0; i < k; i++) {
+        if (M(T - k + i) !== 'LOAD_SCOPE' || (instrs[T - k + i][1] >>> 16) !== 0) ok = false;
+        else tailSlots.push(instrs[T - k + i][1] & 0xffff);
+      }
+      if (ok && [...tailSlots].sort().join() !== [...slots].sort().join()) ok = false;
+      for (let i = 0; i < k && ok; i++) if (M(T + 3 + i) !== 'STORE_LOCAL' || instrs[T + 3 + i][1] !== tailSlots[k - 1 - i]) ok = false;
       if (!ok) continue;
       // no jump into the copy code other than to its start (continue targets T-k)
       const tailStart = T - k;
@@ -967,6 +973,18 @@ class Lifter {
       return;
     }
     stack.push(asg);
+  }
+
+  /** is register r written again after the current instruction before it is read (straight line)? */
+  storedAgainBeforeRead(state, r) {
+    for (let q = state.curPc + 1; q < state.instrs.length; q++) {
+      const [op, operand] = state.instrs[q];
+      const m = this.mnem(op);
+      if (m === 'STORE_REG' && operand === r) return true;
+      if ((m === 'LOAD_REG' || /^REG_/.test(m)) && operand === r) return false;
+      if (NUM_JUMP.has(m) || UNCOND_JUMP.has(m) || m === 'RETURN' || m === 'THROW' || state.jumps[q] !== undefined) return false;
+    }
+    return false;
   }
 
   /** first pc at or after `from` that a jump or exception handler can reach (dead code after an
@@ -2387,6 +2405,9 @@ class Lifter {
         }
         if (v.__marker === 'forInKeys') { state.regForIn.set(operand, v.__src); state.hiddenRegs.add(operand); return; }
         if (v.__brandHelper) { (state.brandRegs || (state.brandRegs = new Set())).add(operand); state.hiddenRegs.add(operand); return; }
+        // a class or literal still under construction copied into a register that is stored again
+        // (with the finished value) before any read: the early copy is not needed
+        if (v.__builder && stack.includes(v) && this.storedAgainBeforeRead(state, operand)) return;
         const tw = state.tempWindow.get(operand);
         const win = tw ? { ...tw, regStoreNames: new Set([...tw.regStores].map((r) => this.regName(state, r))) } : { stores: true, effects: true };
         // a property read (getter, proxy trap) must stay a single read: substitute it only at a single load
