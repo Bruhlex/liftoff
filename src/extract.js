@@ -22,21 +22,15 @@
 const nodeVm = require('vm');
 const t = require('@babel/types');
 const generate = require('@babel/generator').default;
-const { prologueStatements, containsNode } = require('./locate');
+const { prologueStatements, containsNode, declaredLocals, parse } = require('./locate');
 
-const gen = (node) => generate(node, { compact: false, comments: false }).code;
+const genPretty = (node) => generate(node, { compact: false, comments: false }).code;
 
 // ---------------------------------------------------------------------------
 // Synthesize helper functions from the interpreter source
 // ---------------------------------------------------------------------------
 
-function topLevelLocals(stmts) {
-  const names = [];
-  for (const st of stmts) {
-    if (t.isVariableDeclaration(st)) for (const d of st.declarations) if (t.isIdentifier(d.id)) names.push(d.id.name);
-  }
-  return names;
-}
+const topLevelLocals = (stmts) => [...declaredLocals(stmts).keys()];
 
 function buildPrologueFunction(vm) {
   const fn = vm.plain.fnPath.node;
@@ -57,7 +51,6 @@ function buildPrologueFunction(vm) {
  * opcodes (plain switch, `switch (MAP[op])`, range-bucketed dispatch functions).
  */
 function buildStepFunction(vm) {
-  const { parse } = require('./locate');
   const fn = vm.plain.fnPath.node;
   const prologue = prologueStatements(fn, vm.plain.loop.outerPath.node);
   const { roles } = vm;
@@ -199,7 +192,7 @@ function buildInstrumentedSource(vm, table) {
   const retIdx = fb.findIndex((s) => t.isReturnStatement(s));
   fb.splice(retIdx < 0 ? fb.length : retIdx, 0, inject);
 
-  const src = gen(t.program(kept));
+  const src = genPretty(t.program(kept));
   return { src, entryName, entryFn, mainLoader: main, nestedLoader: nested, entryProgramParam: entryProgramParamIndex(entryFn, main.name) };
 }
 

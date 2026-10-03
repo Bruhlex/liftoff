@@ -723,4 +723,4 @@ function locate(code, { log = () => {} } = {}) {
   return { ast, code, globalName, nsName, nsKey, factoryPath, plain, genCopy, handlers, roles, helpers, yields };
 }
 
-module.exports = { locate, parse, gen, collectHandlers, numericCaseValue, containsNode, collectIdentifiers, prologueStatements };
+module.exports = { locate, parse, gen, collectHandlers, numericCaseValue, containsNode, collectIdentifiers, declaredLocals, prologueStatements };

@@ -24,6 +24,8 @@ const { gen, sameExpr, isIdentName, referencesName, countIdent: countRefs, conta
 
 // output: comments kept, strings with minimal escaping
 const GEN_OPTS = { comments: true, compact: false, jsescOption: { minimal: true } };
+// binary operators with a compound assignment form (`a = a op b` -> `a op= b`)
+const COMPOUND_OPS = new Set(['+', '-', '*', '/', '%', '**', '<<', '>>', '>>>', '&', '|', '^']);
 
 // ---------------------------------------------------------------------------
 // host analysis
@@ -378,7 +380,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   return { code, replaced };
 }
 
-/** Does a predicate hold for some node in `stmts`, not looking into nested (non-arrow for await; any for yield) functions? */
+/** Does a predicate hold for some node in `stmts`, not looking into nested functions or classes? */
 function containsOwn(stmts, pred) {
   let hit = false;
   const walk = (n) => {
@@ -1026,21 +1028,7 @@ function stripIllegalStrict(file) {
 }
 
 /** a return statement of this function (returns of nested functions don't count) */
-function containsReturn(node) {
-  let real = false;
-  const walk = (n) => {
-    if (!n || typeof n.type !== 'string' || real) return;
-    if (t.isFunction(n) || t.isClass(n)) return;
-    if (t.isReturnStatement(n)) { real = true; return; }
-    for (const k of t.VISITOR_KEYS[n.type] || []) {
-      const v = n[k];
-      if (Array.isArray(v)) v.forEach(walk);
-      else if (v && typeof v.type === 'string') walk(v);
-    }
-  };
-  walk(node);
-  return real;
-}
+const containsReturn = (node) => containsOwn([node], (n) => t.isReturnStatement(n));
 
 function referencesThisOrArgs(node) {
   let hit = false;
@@ -1083,7 +1071,7 @@ function cleanup(file) {
       if (n.operator === '=' && t.isMemberExpression(n.left) && t.isBinaryExpression(n.right) && (t.isThisExpression(n.left.object) || t.isIdentifier(n.left.object) ||
           t.isMemberExpression(n.right.left) && n.right.left.object === n.left.object) &&
           (!n.left.computed || t.isLiteral(n.left.property)) && t.isNodesEquivalent(n.right.left, n.left) &&
-          ['+', '-', '*', '/', '%', '**', '<<', '>>', '>>>', '&', '|', '^'].includes(n.right.operator)) {
+          COMPOUND_OPS.has(n.right.operator)) {
         if ((n.right.operator === '+' || n.right.operator === '-') && t.isNumericLiteral(n.right.right, { value: 1 }) && n.right.__inc) {
           path.replaceWith(t.updateExpression(n.right.operator === '+' ? '++' : '--', n.left, !path.parentPath.isExpressionStatement()));
         } else {
@@ -1098,7 +1086,7 @@ function cleanup(file) {
         path.replaceWith(t.updateExpression(r.operator === '+' ? '++' : '--', t.identifier(n.left.name), !isStmt));
         return;
       }
-      if (t.isIdentifier(r.left, { name: n.left.name }) && ['+', '-', '*', '/', '%', '**', '<<', '>>', '>>>', '&', '|', '^'].includes(r.operator)) {
+      if (t.isIdentifier(r.left, { name: n.left.name }) && COMPOUND_OPS.has(r.operator)) {
         path.replaceWith(t.assignmentExpression(r.operator + '=', t.identifier(n.left.name), r.right));
       }
     },
