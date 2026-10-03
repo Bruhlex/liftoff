@@ -5,16 +5,10 @@
  * fingerprint of the rest of the interpreter state detects effects that are not modelled.
  */
 
-const SP0 = 8;
-
-// initial stack pointer
-const PC0 = 5;
-
-// pc of the probed instruction
+const SP0 = 8; // initial stack pointer
+const PC0 = 5; // pc of the probed instruction
 const JUMP_TARGET = 700;
-
 const OPERANDS = [(3 << 16) | 5, (6 << 16) | 2, (2 << 16) | 4];
-
 const SCOPE_DEPTH = 10;
 
 // ---------------------------------------------------------------------------
