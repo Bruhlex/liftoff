@@ -1199,8 +1199,17 @@ class Lifter {
     // ---- generic while / do-while --------------------------------------
     const lastM = this.mnem(instrs[L][0]);
     if (NUM_JUMP.has(lastM)) {
-      // do { body } while (cond)
-      const loopRec = { header: H, exit: exitDefault, update: null, label: null };
+      // do { body } while (cond); `continue` jumps to where the condition is computed: a jump
+      // target in the loop from which only the condition follows (no statements, one value)
+      let condStart = null;
+      const targets = [...new Set(Object.entries(jumps).filter(([f, to]) => Number(f) >= H && Number(f) < L && to > H && to <= L && UNCOND_JUMP.has(this.mnem(instrs[Number(f)][0]))).map(([, to]) => to))].sort((a, b) => a - b);
+      for (const T of targets) {
+        const restore = this.snapshot(state);
+        const probe = this.liftRange(state, T, L, []);
+        restore();
+        if (!probe.stmts.length && probe.stack.length === 1) { condStart = T; break; }
+      }
+      const loopRec = { header: H, exit: exitDefault, update: condStart, label: null };
       state.loops.push(loopRec);
       const body = this.liftRange(state, H, L, []);
       state.loops.pop();
@@ -1849,7 +1858,7 @@ class Lifter {
         // `LOAD x; STORE_REG t` copies of a target object before the element's next(): keep scanning
         if (prefixFrom === null && M(q) !== null && !elementHead(q)) {
           let r = q;
-          while (r < tp && !elementHead(r)) r++;
+          while (r < tp && !elementHead(r) && !restElement(r)) r++;
           if (r >= tp) return null;
           prefixFrom = q;
           q = r;
@@ -1869,12 +1878,13 @@ class Lifter {
       prefixFrom = storeEnd < nextStart ? storeEnd : null;
       q = nextStart;
     }
-    if (!segs.length) return null;
+    // (no elements: `[] = it` still gets and closes the iterator)
     const src = state.regIter.get(itReg);
     const elements = [];
     let declKind = null;
     let allDecl = true, anyDecl = false;
     const declaredTargets = [];
+    const targetTemps = []; // registers folded into element targets, hidden once the pattern is certain
     for (const seg of segs) {
       if (seg.hole) { elements.push(null); continue; }
       const elemId = t.identifier(fresh(`__elem${this.tempCounter++}`));
@@ -1896,10 +1906,14 @@ class Lifter {
       if (stmts.length === 0) { elements.push(null); continue; }
       // `rT = obj; rK = key; obj2[rK] = __elem`  ->  target `obj[key]` (the compiler copies the
       // target object and/or computed key into temporaries before the element's next())
-      while (stmts.length >= 2 && t.isExpressionStatement(stmts[0]) && t.isAssignmentExpression(stmts[0].expression, { operator: '=' }) &&
-             t.isIdentifier(stmts[0].expression.left) && /^r\d+$/.test(stmts[0].expression.left.name)) {
+      // (`const rK = yield;` when the key needs a statement of its own)
+      const tempDef = (st) => (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) && /^r\d+$/.test(st.expression.left.name)
+        ? { name: st.expression.left.name, value: st.expression.right }
+        : t.isVariableDeclaration(st) && st.kind !== 'var' && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && /^r\d+$/.test(st.declarations[0].id.name) && st.declarations[0].init
+          ? { name: st.declarations[0].id.name, value: st.declarations[0].init } : null);
+      while (stmts.length >= 2 && tempDef(stmts[0])) {
         const last = stmts[stmts.length - 1];
-        const tmp = stmts[0].expression.left.name;
+        const { name: tmp, value: tmpValue } = tempDef(stmts[0]);
         let tgt = null;
         if (t.isExpressionStatement(last) && t.isAssignmentExpression(last.expression) && t.isMemberExpression(last.expression.left)) tgt = last.expression.left;
         else if (t.isVariableDeclaration(last)) break;
@@ -1908,9 +1922,9 @@ class Lifter {
         if (t.isIdentifier(tgt.object, { name: tmp })) slots.push('object');
         if (tgt.computed && t.isIdentifier(tgt.property, { name: tmp })) slots.push('property');
         if (slots.length !== 1 || countIdent(stmts.slice(1), tmp) !== 1) break;
-        tgt[slots[0]] = stmts[0].expression.right;
+        tgt[slots[0]] = tmpValue;
         stmts.shift();
-        state.hiddenRegs.add(Number(tmp.slice(1)));
+        targetTemps.push(Number(tmp.slice(1)));
       }
       if (stmts.length !== 1) return null;
       const st = stmts[0];
@@ -1933,6 +1947,7 @@ class Lifter {
     }
     // (trailing holes stay: `[,] = it` still calls next() once)
     for (const seg of segs) if (seg.restArr !== undefined) state.hiddenRegs.add(seg.restArr);
+    for (const r of targetTemps) state.hiddenRegs.add(r);
     state.hiddenRegs.add(itReg);
     state.hiddenRegs.add(doneReg);
     this.dropIterInit(state, itReg);
