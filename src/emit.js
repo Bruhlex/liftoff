@@ -349,8 +349,12 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
       },
     });
   }
-  restorePrivateMembers(file, privateSymbols, warn);
+  const privateLeft = restorePrivateMembers(file, privateSymbols);
   foldDerivedFieldInitializers(file);
+  // leftovers that still reference the lowering (reported, not guessed), counted after the
+  // initializer functions that use the WeakMaps are folded into the classes
+  const left = privateLeft ? privateLeft() : 0;
+  if (left) warn(`${left} reference(s) to lowered private members could not be restored`);
   t.traverseFast(file, (n) => { if (t.isClassPrivateMethod(n) && n.body.directives) n.body.directives = n.body.directives.filter((d) => d.value.value !== 'use strict'); });
   stripIllegalStrict(file);
   t.traverseFast(file, (n) => {
@@ -473,6 +477,90 @@ function argumentsToParams(path) {
   for (const u of new Set(uses)) { const id = t.identifier(names[u.property.value]); delete u.computed; Object.assign(u, id); for (const k of ['object', 'property', 'optional']) delete u[k]; }
   n.params = names.map((nm) => t.identifier(nm));
   path.scope.crawl();
+}
+
+/**
+ * An object pattern parameter is lowered to one property read per element at the top of the body:
+ *   (a0 = {}) => { let r1, r2; const r0 = a0.a; const x = a0.b === undefined ? D : a0.b; [r1, r2] = a0.w; }
+ * becomes `({ a: r0, b: x = D, w: [r1, r2] } = {}) => {}`. For a generator this restores when the
+ * reads run (at the call), and each property is read once again.
+ */
+function objectParams(path) {
+  const n = path.node;
+  const body = n.body.body;
+  if (referencesName(n.body, 'arguments')) return;
+  for (let pi = 0; pi < n.params.length; pi++) {
+    const prm = n.params[pi];
+    const P = t.isIdentifier(prm) ? prm.name : t.isAssignmentPattern(prm) && t.isIdentifier(prm.left) ? prm.left.name : null;
+    if (!P) continue;
+    // a property key: a name, or a computed key expression (`{ [f()]: x }`, evaluated in order)
+    const keyOf = (m) => {
+      if (!t.isMemberExpression(m) || !t.isIdentifier(m.object, { name: P })) return null;
+      if (!m.computed && t.isIdentifier(m.property)) return m.property.name;
+      if (m.computed && t.isStringLiteral(m.property)) return m.property.value;
+      if (m.computed && t.isIdentifier(m.property) && keyTemps.has(m.property.name)) return keyTemps.get(m.property.name);
+      if (m.computed && !referencesName(m.property, P)) return m.property;
+      return null;
+    };
+    const keyTemps = new Map(); // temporary holding a computed key -> its expression
+    const prop = (e) => {
+      const k = keyOf(e);
+      if (k !== null) return { k, def: null };
+      if (t.isConditionalExpression(e) && t.isBinaryExpression(e.test, { operator: '===' }) && t.isIdentifier(e.test.right, { name: 'undefined' })) {
+        // (a computed key is evaluated once: only a name key may appear in both reads)
+        const k2 = keyOf(e.test.left);
+        if (typeof k2 === 'string' && keyOf(e.alternate) === k2) return { k: k2, def: e.consequent };
+      }
+      return null;
+    };
+    const props = [];
+    const bare = new Set();
+    let i = 0;
+    for (; i < body.length; i++) {
+      const st = body[i];
+      if (t.isVariableDeclaration(st) && st.declarations.every((d) => !d.init && t.isIdentifier(d.id))) { for (const d of st.declarations) bare.add(d.id.name); continue; }
+      if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && st.declarations[0].init) {
+        // `const k = f(); const x = a0[k];`: the computed key, held in a temporary used once
+        const nx = body[i + 1];
+        const nxInit = nx && t.isVariableDeclaration(nx) && nx.declarations.length === 1 ? nx.declarations[0].init
+          : nx && t.isExpressionStatement(nx) && t.isAssignmentExpression(nx.expression) ? nx.expression.right : null;
+        const kName = st.declarations[0].id.name;
+        if (nxInit && t.isMemberExpression(nxInit) && nxInit.computed && t.isIdentifier(nxInit.object, { name: P }) && t.isIdentifier(nxInit.property, { name: kName }) &&
+            countRefs(t.blockStatement(body.slice(i + 1)), kName) === 1 && !prop(st.declarations[0].init)) {
+          keyTemps.set(kName, st.declarations[0].init);
+          continue;
+        }
+        const r = prop(st.declarations[0].init);
+        if (!r) break;
+        props.push({ ...r, target: st.declarations[0].id });
+        continue;
+      }
+      if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && (t.isArrayPattern(st.expression.left) || t.isObjectPattern(st.expression.left))) {
+        const r = prop(st.expression.right);
+        const names = Object.keys(t.getBindingIdentifiers(st.expression.left));
+        if (!r || !names.every((x) => bare.has(x))) break;
+        for (const x of names) bare.delete(x);
+        props.push({ ...r, target: st.expression.left });
+        continue;
+      }
+      break;
+    }
+    if (!props.length || bare.size) continue;
+    if (body.slice(i).some((x) => referencesName(x, P))) continue;
+    const own = props.flatMap((x) => Object.keys(t.getBindingIdentifiers(x.target)));
+    if (new Set(own).size !== own.length || props.some((x) => x.def && (readsBodyBinding(path, x.def, own) || referencesName(x.def, P)))) continue;
+    if (props.some((x) => typeof x.k !== 'string' && readsBodyBinding(path, x.k, own))) continue;
+    const pat = t.objectPattern(props.map((x) => {
+      const value = x.def ? t.assignmentPattern(x.target, x.def) : x.target;
+      if (typeof x.k !== 'string') return t.objectProperty(x.k, value, true);
+      const short = t.isIdentifier(x.target, { name: x.k }) && isIdentName(x.k);
+      return t.objectProperty(isIdentName(x.k) ? t.identifier(x.k) : t.stringLiteral(x.k), value, false, short);
+    }));
+    n.params[pi] = t.isAssignmentPattern(prm) ? t.assignmentPattern(pat, prm.right) : pat;
+    body.splice(0, i);
+    path.scope.crawl();
+    return;
+  }
 }
 
 /** `(a0) => { let r = a0; [r, ...] = a0; ... }` -> `([r, ...]) => { ... }` */
@@ -612,7 +700,7 @@ function foldDerivedFieldInitializers(file) {
   });
 }
 
-function restorePrivateMembers(file, privateSymbols, warn) {
+function restorePrivateMembers(file, privateSymbols) {
   const privName = (key) => {
     const m = /\$p([a-z]+)_(\d+)$/.exec(key);
     if (m) return `${m[1].startsWith('s') ? 'method' : 'field'}_${m[2]}`;
@@ -845,10 +933,11 @@ function restorePrivateMembers(file, privateSymbols, warn) {
       if (t.isUnaryExpression(e, { operator: 'delete' }) && t.isMemberExpression(e.argument) && t.isIdentifier(e.argument.property) && /^__vmwm__/.test(e.argument.property.name)) p.remove();
     },
   });
-  // leftovers that still reference the lowering (reported, not guessed)
-  let left = 0;
-  t.traverseFast(file, (n) => { if (t.isIdentifier(n) && (weakMaps.has(n.name) || weakSets.has(n.name) || privateSymbols.has(n.name))) left++; });
-  if (left) warn(`${left} reference(s) to lowered private members could not be restored`);
+  return () => {
+    let left = 0;
+    t.traverseFast(file, (n) => { if (t.isIdentifier(n) && (weakMaps.has(n.name) || weakSets.has(n.name) || privateSymbols.has(n.name))) left++; });
+    return left;
+  };
 }
 
 /** `"use strict"` is a syntax error in functions with default, rest or destructured parameters. */
@@ -1067,7 +1156,7 @@ function cleanup(file) {
   paramPasses();
   // destructured parameters, once the register copies are merged into `let r = a0;`
   traverse.cache.clear();
-  traverse(file, { Function(p) { if (t.isBlockStatement(p.node.body)) destructuredParams(p); } });
+  traverse(file, { Function(p) { if (t.isBlockStatement(p.node.body)) { destructuredParams(p); objectParams(p); } } });
   // pass F: `() => { return x; }` -> `() => x`
   traverse.cache.clear();
   traverse(file, {
@@ -1095,7 +1184,7 @@ function cleanup(file) {
       for (const el of first.expression.left.elements) {
         if (el === null) continue;
         const id = t.isAssignmentPattern(el) ? el.left : el;
-        if (!t.isIdentifier(id)) return;
+        if (!t.isIdentifier(id) || names.includes(id.name)) return; // (`const [x, x]` is not valid)
         names.push(id.name);
       }
       const bodyPath = p.get('body');
@@ -1123,6 +1212,7 @@ function cleanup(file) {
   traverse.cache.clear();
   traverse(file, {
     VariableDeclaration(path) {
+      if (path.parentPath.isForXStatement() && path.key === 'left') return; // `for (let k in o)` needs its binding
       const keep = [];
       for (const d of path.node.declarations) {
         if (!d.init && t.isIdentifier(d.id) && /^(r\d+|s\d+_\d+|_t\d+)$/.test(d.id.name)) {

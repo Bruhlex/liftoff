@@ -203,7 +203,8 @@ function isDroppable(node) {
     case 'BinaryExpression':
       if (node.operator === '===' || node.operator === '!==') return isDroppable(node.left) && isDroppable(node.right);
       if (node.operator === 'in' || node.operator === 'instanceof') return false;
-      return lit(node.left) && lit(node.right) && (!t.isBigIntLiteral(node.left) === !t.isBigIntLiteral(node.right));
+      // (BigInt arithmetic throws on a zero divisor or a negative exponent)
+      return lit(node.left) && lit(node.right) && !hasBigInt(node.left) && !hasBigInt(node.right);
     case 'LogicalExpression':
       return isDroppable(node.left) && isDroppable(node.right);
     case 'ConditionalExpression':
@@ -522,7 +523,10 @@ class Lifter {
     const spillBelow = (i) => {
       for (let j = 0; j < i; j++) {
         const u = stack[j];
-        if (!u || u.__marker || u.__builder || u.__underflow || isPure(u) || t.isFunction(u) || t.isClass(u)) continue;
+        // (a literal under construction keeps its node; values in it that read `name` are spilled)
+        if (u && u.__builder && (t.isObjectExpression(u) || t.isArrayExpression(u))) { this.spillBuilder(u, emit, new Set([name])); continue; }
+        if (!u || u.__marker || u.__builder || u.__underflow || t.isFunction(u) || t.isClass(u)) continue;
+        if (isPure(u) && !referencesName(u, name)) continue;
         const id = t.identifier(this.tmpName());
         emit(t.variableDeclaration('const', [t.variableDeclarator(id, u)]));
         stack[j] = id;
@@ -531,7 +535,11 @@ class Lifter {
     const hasTarget = (n) => { let hit = false; t.traverseFast(n, (x) => { if (isTarget(x)) hit = true; }); return hit; };
     for (let i = 0; i < stack.length; i++) {
       const v = stack[i];
-      if (v && typeof v.type === 'string' && !t.isFunction(v) && !t.isClass(v) && hasTarget(v)) spillBelow(i);
+      if (v && typeof v.type === 'string' && !t.isFunction(v) && !t.isClass(v) && hasTarget(v)) {
+        spillBelow(i);
+        // inside a literal under construction: its earlier entries are evaluated before the assignment
+        if (v.__builder && (t.isObjectExpression(v) || t.isArrayExpression(v))) this.spillBuilder(v, emit, new Set([name]));
+      }
       if (isTarget(v)) { walk(v.right); flush(v); stack[i] = t.identifier(name); }
       else walk(v);
     }
@@ -2119,7 +2127,15 @@ class Lifter {
     const touched = (v) => (assigned && [...assigned].some((n) => referencesName(v, n))) || (props && props.size && readsProps(v, props));
     const slots = t.isObjectExpression(b) ? b.properties.filter((p) => t.isObjectProperty(p) || t.isSpreadElement(p)).map((p) => (t.isSpreadElement(p) ? [p, 'argument'] : [p, 'value']))
       : t.isArrayExpression(b) ? b.elements.map((e, k) => (e ? [b.elements, k] : null)).filter(Boolean) : [];
-    if (t.isObjectExpression(b)) for (const p of b.properties) if (t.isObjectProperty(p) && p.computed && !isPure(p.key)) slots.push([p, 'key']);
+    // computed keys come before their values: a key read (`[r]: ...`) is affected like a value
+    if (t.isObjectExpression(b)) {
+      const keys = [];
+      for (const p of b.properties) if ((t.isObjectProperty(p) || t.isObjectMethod(p)) && p.computed && !t.isLiteral(p.key)) keys.push([p, 'key']);
+      // in source order: key, value, next key, ...
+      const order = (h) => b.properties.indexOf(h[0]) * 2 + (h[1] === 'key' ? 0 : 1);
+      slots.push(...keys);
+      slots.sort((x, y) => order(x) - order(y));
+    }
     for (const [holder, key] of slots) {
       let v = holder[key];
       if (t.isSpreadElement(v)) { holder[key] = v; const inner = v; if (!isPure(inner.argument)) { const id = t.identifier(this.tmpName()); emit(t.variableDeclaration('const', [t.variableDeclarator(id, inner.argument)])); inner.argument = id; } continue; }
