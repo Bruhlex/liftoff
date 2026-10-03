@@ -520,6 +520,18 @@ function objectParams(path) {
     for (; i < body.length; i++) {
       const st = body[i];
       if (t.isVariableDeclaration(st) && st.declarations.every((d) => !d.init && t.isIdentifier(d.id))) { for (const d of st.declarations) bare.add(d.id.name); continue; }
+      // `let r = a0; r = a0.x;`: a register that first held the parameter, overwritten right away
+      const nx = body[i + 1];
+      if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && t.isIdentifier(st.declarations[0].init, { name: P }) &&
+          nx && t.isExpressionStatement(nx) && t.isAssignmentExpression(nx.expression, { operator: '=' }) && t.isIdentifier(nx.expression.left, { name: st.declarations[0].id.name }) &&
+          !referencesName(nx.expression.right, st.declarations[0].id.name)) { bare.add(st.declarations[0].id.name); continue; }
+      if (t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) && bare.has(st.expression.left.name)) {
+        const r = prop(st.expression.right);
+        if (!r) break;
+        bare.delete(st.expression.left.name);
+        props.push({ ...r, target: t.identifier(st.expression.left.name) });
+        continue;
+      }
       if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && st.declarations[0].init) {
         // `const k = f(); const x = a0[k];`: the computed key, held in a temporary used once
         const nx = body[i + 1];
