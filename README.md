@@ -110,7 +110,6 @@ is compared with its source `samples/http-client.src.js` instead.
 
 | set | content | result |
 |---|---|---|
-| `samples/` | 17 builds from two code-generator versions | all reproduce the original output; no decompiled file assigns to an undeclared variable |
 | `corpus/builds/` | 120 builds of 83 programs (obfuscator.io 8.0.6, eight option sets: VM only, + string array, + control-flow flattening, + expression obfuscation, all, raw, Node target) | all 120 behave like the build; two carry a documented one-line difference (`corpus/expected-divergence.json`) |
 
 ## Layout
