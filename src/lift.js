@@ -1288,35 +1288,28 @@ class Lifter {
     let condInfo = null;
     {
       // the probe lifts the header only to find the condition; declarations it records (e.g. a
-      // `const` at the top of a `for (;;)` body) must not survive into the real lift of the body
-      const restore = this.snapshot(state);
-      const probe = this.liftRange(state, H, this.firstJumpAt(state, H, L), []);
-      restore({ declaredOnly: true });
+      // `const` at the top of a `for (;;)` body) must not survive into the real lift of the body.
+      // A `for (let ...)` condition may evaluate expressions before its test (`a.push(f), i < 5`).
+      const forLet = state.forLet.has(H);
+      const probeCondition = (X, oneValue) => {
+        const restore = this.snapshot(state);
+        const probe = this.liftRange(state, H, X, []);
+        restore({ declaredOnly: true });
+        const pre = exprStmts(probe.stmts);
+        if ((probe.stmts.length && !(forLet && pre)) || (oneValue && probe.stack.length !== 1)) return null;
+        const info = this.condFromJump(state, this.mnem(instrs[X][0]), instrs[X][1], probe.stack);
+        if (probe.stmts.length) info.pre = pre;
+        condEnd = X;
+        return info;
+      };
       const jpc = this.firstJumpAt(state, H, L);
-      const jm = jpc < L ? this.mnem(instrs[jpc][0]) : null;
-      // (a `for (let ...)` condition may evaluate expressions before its test, `a.push(f), i < 5`)
-      const pre = state.forLet.has(H) && probe.stmts.every((x) => t.isExpressionStatement(x)) ? probe.stmts.map((x) => x.expression) : null;
-      if (jm && NUM_JUMP.has(jm) && (probe.stmts.length === 0 || pre) && jumps[jpc] > L) {
-        condEnd = jpc;
-        condInfo = this.condFromJump(state, jm, instrs[jpc][1], probe.stack);
-        if (probe.stmts.length) condInfo.pre = pre;
-      }
+      if (jpc < L && NUM_JUMP.has(this.mnem(instrs[jpc][0])) && jumps[jpc] > L) condInfo = probeCondition(jpc, false);
       // a `for (let ...)` condition with a short-circuit (`run && (x = 1, f)`): up to the jump
       // that leaves the loop, provided all jumps before it stay inside the condition
-      if (!condInfo && state.forLet.has(H)) {
+      if (!condInfo && forLet) {
         let X = -1;
         for (let q = H; q < L; q++) if (NUM_JUMP.has(this.mnem(instrs[q][0])) && jumps[q] > L) { X = q; break; }
-        const contained = X > H && Object.entries(jumps).every(([f, to]) => Number(f) < H || Number(f) >= X || (to > Number(f) && to <= X));
-        if (contained) {
-          const restore2 = this.snapshot(state);
-          const p2 = this.liftRange(state, H, X, []);
-          restore2({ declaredOnly: true });
-          if (p2.stack.length === 1 && p2.stmts.every((x) => t.isExpressionStatement(x))) {
-            condEnd = X;
-            condInfo = this.condFromJump(state, this.mnem(instrs[X][0]), instrs[X][1], p2.stack);
-            if (p2.stmts.length) condInfo.pre = p2.stmts.map((x) => x.expression);
-          }
-        }
+        if (X > H && Object.entries(jumps).every(([f, to]) => Number(f) < H || Number(f) >= X || (to > Number(f) && to <= X))) condInfo = probeCondition(X, true);
       }
     }
     const loopRec = { header: H, exit: exitDefault, update: null, label: null, back: L };
@@ -1691,9 +1684,8 @@ class Lifter {
       const isBookkeeping = (x) => isBookkeepingStore(x, hidden);
       fall.stmts = fall.stmts.filter((x) => !isBookkeeping(x));
       other.stmts = other.stmts.filter((x) => !isBookkeeping(x));
-      const exprOnly = (st) => st.every((x) => t.isExpressionStatement(x));
       let expr;
-      if (exprOnly(fall.stmts) && exprOnly(other.stmts)) {
+      if (exprStmts(fall.stmts) && exprStmts(other.stmts)) {
         const seq = (st, v) => (st.length ? t.sequenceExpression([...st.map((x) => x.expression), v]) : v);
         expr = t.conditionalExpression(fallCond, seq(fall.stmts, a), seq(other.stmts, b));
       } else {
@@ -2887,9 +2879,9 @@ class Lifter {
         // statements emitted while the heritage was evaluated (`extends (f = () => C, B)`) belong
         // into the extends clause: there the class's own name is its inner binding
         const mark = cls && cls.__stmtsMark;
-        if (t.isClassExpression(cls) && mark && mark.stmts === state.curStmts && state.curStmts.length > mark.length &&
-            state.curStmts.slice(mark.length).every((x) => t.isExpressionStatement(x))) {
-          const exprs = state.curStmts.splice(mark.length).map((x) => x.expression);
+        const exprs = t.isClassExpression(cls) && mark && mark.stmts === state.curStmts && state.curStmts.length > mark.length ? exprStmts(state.curStmts.slice(mark.length)) : null;
+        if (exprs) {
+          state.curStmts.splice(mark.length);
           sup = t.sequenceExpression([...exprs, sup]);
         }
         if (t.isClassExpression(cls)) cls.superClass = sup;

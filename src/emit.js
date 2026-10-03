@@ -1761,7 +1761,8 @@ function defaultCheck(st) {
   // a default that reads a later parameter in its TDZ: `{ throw new ReferenceError(..); a = undefined; }`
   if (cons.length === 2 && t.isThrowStatement(cons[0])) return { name, value: iife([cons[0]]) };
   // `_ = (a = f, b = g)`: expressions before the parameter's own assignment
-  if (cons.slice(0, -1).every((x) => t.isExpressionStatement(x))) return { name, value: t.sequenceExpression([...cons.slice(0, -1).map((x) => x.expression), last.expression.right]) };
+  const before = exprStmts(cons.slice(0, -1));
+  if (before) return { name, value: t.sequenceExpression([...before, last.expression.right]) };
   return null;
 }
 
