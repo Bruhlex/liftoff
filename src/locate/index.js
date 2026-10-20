@@ -61,6 +61,7 @@ function locate(code, { log = () => {} } = {}) {
   roles.ns = nsName;
   const helpers = collectFactoryHelpers(factoryPath);
   attachStateAliases(handlers, roles);
+  inferAliasedRoles(handlers, roles);
 
   let yields = { await: null, yield: null, yieldStar: null };
   if (genCopy) {
@@ -152,6 +153,92 @@ function attachStateAliases(handlers, roles) {
       });
     } catch { /* stale path: leave this handler without aliases */ }
     if (aliases.size) h.stateAliases = aliases;
+  }
+}
+
+/**
+ * Fill roles that inferRoles could not detect on newer builds because its heuristics scan
+ * handler text for the root register names, while newer handlers use the aliases resolved by
+ * attachStateAliases. Only fills a role when it is still null, so older builds (where inferRoles
+ * already found everything) are untouched.
+ */
+function inferAliasedRoles(handlers, roles) {
+  const isPc = (name, h) => name === roles.pc || h.stateAliases?.get(name) === 'PC';
+
+  // jump table: a handler whose whole body is `pc = TABLE[pc]` (pc possibly aliased). The table
+  // itself is referenced directly, so once named it canonicalizes to J via roleMap.
+  if (!roles.jumps) {
+    for (const h of handlers) {
+      const body = h.body.filter((st) => !t.isBreakStatement(st) && !t.isContinueStatement(st));
+      if (body.length !== 1 || !t.isExpressionStatement(body[0])) continue;
+      const e = body[0].expression;
+      if (!t.isAssignmentExpression(e, { operator: '=' }) || !t.isIdentifier(e.left) || !isPc(e.left.name, h)) continue;
+      if (!t.isMemberExpression(e.right, { computed: true }) || !t.isIdentifier(e.right.object)) continue;
+      if (!t.isIdentifier(e.right.property) || !isPc(e.right.property.name, h)) continue;
+      roles.jumps = e.right.object.name;
+      break;
+    }
+  }
+
+  // scope register + scope-object property roles. Older builds build the first scope object in the
+  // prologue (inferRoles finds it there); newer builds build it inside the ENTER_SCOPE handler with
+  // obfuscated keys ({slots:new Array, constFlags:null, selfIdx:-1, parent:<id>}). Detect it from
+  // the handler, and take the scope register as the outer variable it is stored into.
+  if (!roles.scope) {
+    for (const h of handlers) {
+      // the scope object literal + its property roles
+      let lit = null, props = null;
+      for (const st of h.body) {
+        t.traverseFast(st, (n) => {
+          if (lit || !t.isObjectExpression(n) || n.properties.length < 3) return;
+          const pr = {};
+          let ok = true;
+          for (const p of n.properties) {
+            if (!t.isObjectProperty(p)) { ok = false; break; }
+            const key = t.isIdentifier(p.key) ? p.key.name : t.isStringLiteral(p.key) ? p.key.value : null;
+            const v = p.value;
+            if (t.isNewExpression(v) && t.isIdentifier(v.callee, { name: 'Array' })) pr.slots = key;
+            else if (t.isNullLiteral(v)) pr.constFlags = key;
+            else if (t.isUnaryExpression(v, { operator: '-' })) pr.selfIdx = key;
+            else if (t.isIdentifier(v)) pr.parent = key;
+          }
+          if (ok && pr.slots && pr.parent) { lit = n; props = pr; }
+        });
+        if (lit) break;
+      }
+      if (!lit) continue;
+      // names declared inside this handler, and the declared locals that hold the new scope object
+      const declared = new Set();
+      const holdsLit = new Set();
+      for (const st of h.body) t.traverseFast(st, (n) => {
+        if (!t.isVariableDeclarator(n) || !t.isIdentifier(n.id)) return;
+        declared.add(n.id.name);
+        if (n.init === lit || (t.isIdentifier(n.init) && holdsLit.has(n.init.name))) holdsLit.add(n.id.name);
+      });
+      // scope register: an assignment target that receives the scope object but is NOT a handler
+      // local (so it persists across handlers) -- `SC = lit` or `SC = <localHoldingLit>`.
+      let scopeVar = null;
+      for (const st of h.body) t.traverseFast(st, (n) => {
+        if (scopeVar || !t.isAssignmentExpression(n, { operator: '=' }) || !t.isIdentifier(n.left) || declared.has(n.left.name)) return;
+        if (n.right === lit || (t.isIdentifier(n.right) && holdsLit.has(n.right.name))) scopeVar = n.left.name;
+      });
+      if (scopeVar) { roles.scope = scopeVar; roles.scopeProps = props; break; }
+    }
+  }
+
+  // scope "names" property: `(scope.X ||= {})[slot] = consts[...]` in the DECLARE handler. Detected
+  // here (not in inferRoles) because roles.scope is only known after the pass above on newer builds.
+  if (roles.scope && roles.scopeProps && !roles.scopeProps.names) {
+    for (const h of handlers) {
+      if (roles.scopeProps.names) break;
+      for (const st of h.body) t.traverseFast(st, (n) => {
+        if (roles.scopeProps.names) return;
+        if (t.isAssignmentExpression(n, { operator: '||=' }) && t.isMemberExpression(n.left) &&
+            t.isIdentifier(n.left.object, { name: roles.scope }) && t.isObjectExpression(n.right)) {
+          roles.scopeProps.names = t.isIdentifier(n.left.property) ? n.left.property.name : n.left.property.value;
+        }
+      });
+    }
   }
 }
 

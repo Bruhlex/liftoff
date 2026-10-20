@@ -109,3 +109,27 @@ S/SP/PC/K/OP everywhere.
 Plus ~10 new rules for genuinely-changed shapes (ENTER_SCOPE new layout, `S[SP++]=THIS`, super-ctor,
 spread/rest variants, masked operand `K[OP&16777215]`). Each inferRoles change needs a full 120-build
 regression run, since it affects all builds.
+
+---
+
+## Progress update (2026-10-20, role detection phase)
+
+Three regression-safe detectors added to `src/locate/index.js` (`inferAliasedRoles`, run after
+`attachStateAliases`), each guarded by `if (!roles.X)` so older builds — where inferRoles already
+finds everything — are untouched (verified: baseline stays 116/120 clean, 120/120 match, 0 errors):
+
+1. **Alias resolution** (data-plane registers): 3 -> ~75 classified.
+2. **Jump table** detection (`pc = TABLE[pc]`, pc aliased): -> ~82.
+3. **Scope register + scope properties** (scope object now built in a handler with obfuscated keys
+   `{slots,constFlags,selfIdx,parent}`, plus the `names` property): -> ~90-101 across the 11 builds.
+
+8.4.0 classification by handler shape is now ~90-101 of 118-136 opcodes (was 3). Still not a clean
+PASS (every opcode must be identified). The remaining tail (see remaining_unclassified_shapes.txt):
+  - **scope/global TDZ loads where the scope/namespace is itself aliased** (`v2.p0 && x in v2.p0`):
+    needs control-plane (SC/NS) alias resolution, which regressed the baseline when added bluntly —
+    needs a scoped, per-handler approach.
+  - **regs (R) and tries (TT) not yet detected** on 8.4.0 (iterator-next, try-enter opcodes).
+  - **operand re-decoding**: newer opcodes mask the operand (`K[OP&16777215]`, `OP&65535`,`OP>>>16`).
+  - **~12-15 new rules** for shapes with no older equivalent (PUSH_THIS `S[SP++]=THIS`, null-safe
+    `==`/`!=`, spread/rest arg builders, super-constructor, masked-operand define/get).
+Each remaining item needs its own detection/rule plus a full 120-build regression run.
