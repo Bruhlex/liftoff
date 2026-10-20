@@ -67,6 +67,36 @@ function entryProgramParamIndex(entryFn, mainLoaderName) {
 // Build and run the instrumented copy
 // ---------------------------------------------------------------------------
 
+/**
+ * >= 8.4 builds every closure through one wrapper template, so the function kind can no longer be
+ * read off the closure. The MAKE_CLOSURE handler decodes it from the program's flags and picks a
+ * builder: `if (generator) ... else if (async) { if (arrow) ... } else if (arrow) ... else ...` (the
+ * generator builder installs the (async) generator prototype, the async one runs the await loop).
+ * This builds a step function in which that chain records the flags (`__P.flags`) instead.
+ */
+function buildClosureFlagsStep(vm) {
+  if (!vm.roles.resumeFrame) return null;
+  const isId = (n) => t.isIdentifier(n);
+  const firstIf = (blk) => (t.isBlockStatement(blk) ? blk.body.find((s) => t.isIfStatement(s)) : t.isIfStatement(blk) ? blk : null);
+  const isChain = (s) => {
+    if (!t.isIfStatement(s) || !isId(s.test) || !t.isIfStatement(s.alternate) || !isId(s.alternate.test)) return false;
+    const genInner = firstIf(s.alternate.consequent);
+    const arrowElse = s.alternate.alternate;
+    return !!(genInner && isId(genInner.test) && t.isIfStatement(arrowElse) && isId(arrowElse.test) && arrowElse.test.name === genInner.test.name && arrowElse.alternate);
+  };
+  for (const h of vm.handlers) {
+    const i = h.body.findIndex(isChain);
+    if (i < 0) continue;
+    const chain = h.body[i];
+    const A = chain.test.name, B = chain.alternate.test.name, C = chain.alternate.alternate.test.name;
+    const rec = t.expressionStatement(t.assignmentExpression('=', t.memberExpression(t.identifier('__P'), t.identifier('flags')),
+      t.objectExpression([['generator', A], ['async', B], ['arrow', C]].map(([k, v]) => t.objectProperty(t.identifier(k), t.unaryExpression('!', t.unaryExpression('!', t.identifier(v))))))));
+    h.body[i] = rec;
+    try { return buildStepFunction(vm); } finally { h.body[i] = chain; }
+  }
+  return null;
+}
+
 function buildInstrumentedSource(vm, table) {
   const program = vm.ast.program;
   // top-level statement containing the factory
@@ -91,6 +121,8 @@ function buildInstrumentedSource(vm, table) {
     t.objectProperty(t.identifier('prologue'), buildPrologueFunction(vm)),
     t.objectProperty(t.identifier('step'), buildStepFunction(vm)),
   ]);
+  const flagsStep = buildClosureFlagsStep(vm);
+  if (flagsStep) exportObj.properties.push(t.objectProperty(t.identifier('closureFlags'), flagsStep));
   const inject = t.expressionStatement(t.assignmentExpression('=', t.memberExpression(t.identifier('globalThis'), t.identifier('__VMX')), exportObj));
 
   // Insert into the *cloned* factory body before its final return.

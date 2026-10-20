@@ -77,6 +77,15 @@ function functionKind(fn) {
 }
 
 /** Create the closure for a nested program with the VM's own MAKE_CLOSURE handler. */
+/** >= 8.4: the kind flags the VM's MAKE_CLOSURE decodes for a nested program (see sandbox.js). */
+function closureFlagsViaStep(X, table, holderProg, nestedObj) {
+  const entry = [...table.entries()].find(([, e]) => e.mnemonic === 'MAKE_CLOSURE');
+  if (!entry || !X.closureFlags) return null;
+  const P = { codeSize: 64, pc: 3, op: entry[0], operand: 0, stack: [nestedObj], sp: 1, NORET: {} };
+  X.closureFlags(...X.stepArgs(holderProg, P));
+  return P.flags || null;
+}
+
 function makeClosureViaStep(X, table, holderProg, nestedObj) {
   const entry = [...table.entries()].find(([, e]) => e.mnemonic === 'MAKE_CLOSURE');
   if (!entry) return null;
@@ -184,6 +193,12 @@ function extractPrograms(vm, table, { log = () => {}, sandbox = null } = {}) {
         // an unnamed program's closure shows the name of the builder's own wrapper function
         // (`{ 'vjRMKk'() {...} }['vjRMKk']`); such names occur in the VM runtime's source text
         if (r.fnKind.name && runtimeNames(vm).has(r.fnKind.name)) r.fnKind.name = null;
+        // >= 8.4 gives every closure the name the source would infer (`const f = function () {}`
+        // has f.name === 'f'); that is not the function's own binding, so it must not name it
+        if (roles.resumeFrame && r.fnKind.name) { r.fnKind.inferredName = r.fnKind.name; r.fnKind.name = null; }
+        // ... and builds every closure as the same non-constructible wrapper: take the kind from the flags
+        const flags = roles.resumeFrame ? closureFlagsViaStep(X, table, programs[0].obj, r.obj) : null;
+        if (flags) Object.assign(r.fnKind, { kind: flags.arrow && !flags.generator ? 'arrow' : 'function', async: flags.async, generator: flags.generator });
       } catch (e) {
         log(`program ${r.id}: makeClosure probe failed: ${e.message}`);
       }

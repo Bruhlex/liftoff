@@ -31,7 +31,10 @@ The VM mode of obfuscator.io's hosted service, **free tier** of the dashboard
 * the earlier code generator (July 2026);
 * **versions 8.0.6 and 8.0.8**, preset *VM Low*, alone and combined with string arrays,
   control-flow flattening, numbers to expressions, split strings, transform object
-  keys, raw output and the Browser or Node target.
+  keys, raw output and the Browser or Node target;
+* **version 8.4.0**, preset *VM Low*, Node target (`samples/v840_vmlow/`: 11 builds, among them
+  the hard kitchen-sink, SAT-solver and catalogue programs). 8.4.0 changed the frame layout,
+  dispatch and closure creation; see `samples/v840_vmlow/README.md`.
 
 The paid VM hardening options of the dashboard (encoded jumps, stateful opcodes, split
 dispatcher, …) are untested. A later version may change the instruction set; unknown
@@ -112,6 +115,7 @@ is compared with its source `samples/http-client.src.js` instead.
 | set | content | result |
 |---|---|---|
 | `corpus/builds/` | 120 builds of 83 programs (obfuscator.io 8.0.6, eight option sets: VM only, + string array, + control-flow flattening, + expression obfuscation, all, raw, Node target) | all 120 behave like the build; two carry a documented one-line difference (`corpus/expected-divergence.json`) |
+| `samples/v840_vmlow/` | 11 builds of 11 programs (obfuscator.io 8.4.0, VM Low, Node target): `node test/corpus.js samples/v840_vmlow` | all 11 behave like the build |
 | test262 (not in the repository) | 9,512 language tests of [test262](https://github.com/tc39/test262) in 17 builds (obfuscator.io 8.0.8, VM with and without string array / split strings / numbers to expressions / transform keys) | all 8,824 tests the build itself passes give the same result after decompiling (the other 688 fail in the obfuscated build already) |
 
 ## Layout

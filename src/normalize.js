@@ -95,6 +95,47 @@ function inlineLiteralTemps(code) {
 }
 
 /**
+ * "Split strings" output (also inside 8.4's VM Low builds) writes long strings as chains of
+ * hundreds of one-character literals, `'n' + 'y' + 'D' + ...`. Such a chain is an AST over a
+ * thousand levels deep, and webcrack's recursive passes then overflow the stack now and then
+ * (frame sizes vary with what the JIT has compiled), so the result depended on the run. The
+ * chains are folded to one literal first (constant folding, text-level edit); the walk uses an
+ * explicit stack, so it is not limited by the depth it removes.
+ */
+const MIN_FOLD_TERMS = 32;
+function foldStringConcats(code) {
+  let ast;
+  try { ast = parser.parse(code, { sourceType: 'script', allowReturnOutsideFunction: true }); } catch { return code; }
+  const edits = [];
+  const isConcat = (n) => t.isBinaryExpression(n, { operator: '+' });
+  const stack = [ast.program];
+  while (stack.length) {
+    const n = stack.pop();
+    if (!n || typeof n.type !== 'string') continue;
+    if (isConcat(n)) {
+      // left spine of string literals: (((s0 + s1) + s2) + ...)
+      const parts = [];
+      let x = n;
+      while (isConcat(x) && t.isStringLiteral(x.right)) { parts.push(x.right.value); x = x.left; }
+      if (t.isStringLiteral(x) && parts.length + 1 >= MIN_FOLD_TERMS && !isConcat(x)) {
+        parts.push(x.value);
+        edits.push({ from: n.start, to: n.end, text: JSON.stringify(parts.reverse().join('')) });
+        continue;
+      }
+    }
+    for (const k of t.VISITOR_KEYS[n.type] || []) {
+      const v = n[k];
+      if (Array.isArray(v)) for (let i = v.length - 1; i >= 0; i--) stack.push(v[i]);
+      else if (v && typeof v.type === 'string') stack.push(v);
+    }
+  }
+  if (!edits.length) return code;
+  edits.sort((a, b) => b.from - a.from);
+  for (const e of edits) code = code.slice(0, e.from) + e.text + code.slice(e.to);
+  return code;
+}
+
+/**
  * Newer obfuscator.io builds emit the string-array decoder as
  *   function D(i, k) { i = i - 134; const a = ARR(); let s = a[i]; return s; }
  * webcrack only recognises decoders whose first statement is `const a = ARR()`. The index
@@ -139,7 +180,7 @@ function hoistDecoderArrayLoads(code) {
 
 async function normalize(code, { skipWebcrack = false, log = () => {} } = {}) {
   if (skipWebcrack) return code;
-  return inlineLiteralTemps(await runWebcrack(hoistDecoderArrayLoads(code), log));
+  return inlineLiteralTemps(await runWebcrack(hoistDecoderArrayLoads(foldStringConcats(code)), log));
 }
 
 const WEBCRACK_OPTS = {
@@ -170,6 +211,14 @@ async function runWebcrack(code, log) {
     return result.code;
   } catch (e) {
     if (e instanceof RangeError && /call stack/.test(e.message)) {
+      // inputs close to the stack limit overflow only now and then (frame sizes vary with what the
+      // JIT has compiled); a second attempt usually fits, and the browser build has no worker
+      try {
+        const result = await webcrack(code, { ...WEBCRACK_OPTS, sandbox: nodeVmSandbox });
+        return result.code;
+      } catch (e1) {
+        if (!(e1 instanceof RangeError)) log(`webcrack retry failed (${e1.message})`);
+      }
       try {
         return await webcrackInWorker(code);
       } catch (e2) {

@@ -251,6 +251,10 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   const isBoilerplate = (st) => {
     if (t.isExpressionStatement(st)) return isBoilerExpr(st.expression);
     if (t.isTryStatement(st)) return st.block.body.every(isBoilerplate) && (!st.handler || st.handler.body.body.length === 0);
+    // >= 8.4 hides the namespace exports in `var {} = (NS.x = x, 0)`; once webcrack splits the
+    // sequence off, `var {} = 0` is left, a no-op for any non-nullish literal
+    if (t.isVariableDeclaration(st) && st.declarations.every((d) => t.isObjectPattern(d.id) && !d.id.properties.length &&
+        (t.isNumericLiteral(d.init) || t.isStringLiteral(d.init) || t.isBooleanLiteral(d.init)))) return true;
     if (t.isVariableDeclaration(st)) return st.declarations.every((d) => t.isIdentifier(d.id) && (d.id.name === nsName || d.id.name === globalName || d.id.name === entryName || nsAliases.has(d.id.name) || nsRecords.has(d.id.name)));
     return false;
   };

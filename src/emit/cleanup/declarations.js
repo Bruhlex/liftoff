@@ -47,6 +47,10 @@ function rewriteBlocks(file) {
         const st = body[i];
         if (t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) && t.isFunctionExpression(st.declarations[0].init) && st.declarations[0].init.id && st.declarations[0].init.id.name === st.declarations[0].id.name && !assignsOwnName(st.declarations[0].init)) {
           const fn = st.declarations[0].init;
+          // the crawled scope still holds the declarator's binding; drop it, or entering the new
+          // declaration collides with it (`const f = function f() {}` in >= 8.4 builds)
+          const own = path.scope.getOwnBinding(fn.id.name);
+          if (own && own.path.node === st.declarations[0]) path.scope.removeOwnBinding(fn.id.name);
           body[i] = t.functionDeclaration(fn.id, fn.params, fn.body, fn.generator, fn.async);
         }
       }

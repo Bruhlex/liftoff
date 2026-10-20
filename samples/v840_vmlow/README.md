@@ -1,135 +1,83 @@
-# obfuscator.io v8.4.0 — "VM Low" preset — Liftoff check (2026-10-20)
+# obfuscator.io v8.4.0 — "VM Low" preset
 
-Built on the hosted dashboard (free tier, only free VM preset = **VM Low** = "pure VM,
-no advanced defenses", Target=Node), captured via the Chrome extension.
+Eleven builds made on the hosted dashboard (free tier: the only free VM preset is **VM Low**,
+"pure VM, no advanced defenses", Target=Node). The first eight are the usual a-series test
+programs; `a18_kitchen_sink`, `t_test15` and `d13_sat_solver` are the hard, variation-dense ones.
 
-Result: **0/8** — all 8 produce decompiler ERRORs. ops dropped 164 -> ~118-133,
-warn ~95-117 ("unclassified opcode N"). The core VM handler encoding changed vs the
-thesis-era version (8.0.6) and vs 8.2.1 (7/8). Liftoff's opcode classifier needs
-updating for 8.4.0.
+    node test/corpus.js samples/v840_vmlow
 
-Caveat: 8.2.1 was tested at the old default (incl. locked Dynamic Opcodes), which now
-maps to the Pro-locked "VM Default". VM Low is a *different, lighter* preset, so this is
-not a pure version-to-version comparison — but VM Low is the simplest VM output, so the
-failure points at the VM encoding itself, not added hardening.
+**Status (2026-10-21): 11/11 clean pass, 11/11 stdout match, 0 decompiler errors**, every
+opcode identified by handler shape (no behavioural inference needed). Older builds unchanged:
+116/120 clean pass, 120/120 stdout match, 0 errors (`node test/corpus.js`).
 
----
+Starting point on 2026-10-20 was 0/8: 3 of 118 opcodes classified, every build an ERROR.
 
-## Root-cause analysis (2026-10-20): what changed in 8.4.0
-
-Characterized on `v8_v840_a10_numbers.js` (VM Low).
-
-**What still works (unchanged):**
-- `locate` finds the interpreter: "1 copy, 118 handler bodies".
-- Disassembly + program/const extraction are correct (sandbox-based, name-independent).
-- Role inference finds the state vars: stack=`Pg`, sp=`Pn`, pc=`PF`, consts=`Pl`, operand, tryFrames, etc.
-
-**What broke — the opcode CLASSIFIER only:**
-- baseline a10:  164 opcodes, **153 classified by handler shape**, inference 11/11 -> full.
-- 8.4.0  a10:  118 opcodes, **3 classified by handler shape**, inference 19/115 -> ~96 unclassified.
-
-**Why.** Classification canonicalizes each handler (rename role vars stack->S, sp->SP, pc->PC;
-others -> v0,v1,...) and matches regex/AST rules (rules.js, e.g. BIN_RE) against the canonical
-text. For an 8.4.0 binop the canonical text comes out as:
-
-    let v0=v1[--v2];let v3=v1[--v2];v1[v2++]=v3+v0;v4++;      (8.4.0, NOT matched)
-
-but the rule expects:
-
-    let v0=S[--SP];let v1=S[--SP];S[SP++]=v1 + v0;PC++;        (BIN_RE)
-
-The stack/sp/pc stayed positional (`v1`/`v2`/`v4`) instead of `S`/`SP`/`PC`: the 8.4.0 binop
-handlers reach the interpreter state through **local aliases** that role inference did not tie
-back to Pg/Pn/PF. roleMap only renames direct occurrences of the role vars, so the shape rules
-all miss. Semantics are identical (plain stack ADD/MUL/MOD/shift/eq/throw/store/scope-walk).
-
-**Two concrete VM-generator changes vs the thesis version:**
-1. Binary operators were a single `BINOP_MEGA` opcode (operator chosen by an operand ladder,
-   `binopMegaInfo`/`evalLadder`); 8.4.0 emits **one opcode per operator** (op22=ADD, op43=MUL,
-   op50=MOD, op0=>>, op8===, ...). Opcode space is sparse (values up to ~382).
-2. Handlers alias the state registers into locals rather than using them by name, which is what
-   defeats name-based canonicalization.
-
-**Fix direction (not yet done):** extend canonicalize/roleMap with a small alias/def-use pass so
-`let a = <stack>` (and parameter bindings) propagate the S/SP/PC roles to `a`. Then the existing
-BIN_RE and friends match again and classification should recover toward the baseline rate. The
-lifter, disassembler and extractor need no change.
+Caveat: 8.2.1 was tested at the old default (incl. Dynamic Opcodes), which now maps to the
+Pro-locked "VM Default". VM Low is a different, lighter preset, so this is not a pure
+version-to-version comparison.
 
 ---
 
-## Fix implemented (2026-10-20): handler-local state-alias resolution
+## What changed in 8.4.0, and how Liftoff handles it
 
-**Change (3 files, no behavior change for older builds):**
-- `src/locate/interpreter.js` — `collectHandlers` now attaches a live `casePath` to each handler.
-- `src/locate/index.js` — new `attachStateAliases(handlers, roles)`: for each handler, resolve the
-  names it uses, in their own scope, back to a root role (stack/sp/pc/consts/regs) by following
-  `let x = y` / `x = y` bindings transitively. Declarator-init from an identifier is authoritative
-  for a register's identity; non-identifier mutations (jumps `pO = jumps[pO]`, `pO = 0`, try-frame
-  pc) change the value not the role. sp/pc are shuffled between root and locals, so sources are
-  accepted by *role consensus* (all resolve to the same role, cycles ignored). Result attached as
-  `handler.stateAliases`.
-- `src/classify/canonical.js` — `roleMap` merges `handler.stateAliases`.
+Everything is detected from the code's shape, and every new path is guarded so it only engages
+when the older detection finds nothing (or on the 8.4 frame layout, `roles.resumeFrame`).
 
-**Effect:**
-- 8.4.0 classification by handler shape: **3 -> ~78** (a10), ~78-86 on hard builds. State now
-  canonicalizes to S/SP/PC/K/OP everywhere.
-- Older builds: **unchanged** — full corpus still 120/120 stdout match, 116 clean pass, 0 errors;
-  unit + samples pass. (No such aliases exist pre-8.4, so the pass is a no-op there.)
+### Interpreter state and roles (`src/locate/`)
 
-**Still failing: 0/8 clean** — ~42-50 opcodes per build remain unclassified because 8.4.0 also
-introduced **new handler SHAPES** (not an aliasing issue). 47 distinct shapes catalogued in
-`remaining_unclassified_shapes.txt`. Families:
-  - scope-variable access with TDZ guards (`v.p0`/`v.p1` chains, "Cannot access before initialization")
-  - property definition (defineProperty, get/set, "name", protoTarget) — split per kind
-  - conditional jumps `if(S[--SP]){PC=J[PC]}else{PC++}`, try-frame unwinding (TF walking), super()/this
-Next step (separate, larger): add ~47 classification rules to `src/classify/rules.js`. The shapes are
-readable now, so each is a direct mapping. Lifter/extractor need no change.
+- **Handler-local aliases of the state.** Most opcodes moved into secondary dispatch functions
+  that bind stack/sp/pc/consts/regs to fresh locals (`pN = OT; ... pN[--pn]`). `attachStateAliases`
+  resolves each name back to its root role (declarator init is authoritative, shuffled sp/pc
+  registers by role consensus); the canonicalizer merges the result.
+- **Two program parameters.** The interpreter now takes the fresh program data *and* a saved
+  resume frame: `if (F === undefined) { init from P[...] } else { resume from F[...] }`. The frame
+  is indexed more often, so it used to be taken for the program, and extraction ran every program
+  down the resume branch. The program is now the parameter read in the fresh branch
+  (`roles.prog`), the frame is `roles.resumeFrame`.
+- **Registers share the stack array** (`PR = Pg`), the lexical `this` is captured by assignment,
+  the try table is only loaded in the fresh branch and indexed with an aliased pc, the jump table
+  and the scope object (now built in a handler, obfuscated keys) are found from handler shapes,
+  `new.target` and the callee are found from the push / self-binding handlers.
+- **No generator copy of the interpreter.** Yield/await/yield* are handled inline:
+  `if (op === A || op === B || op === C) { save frame; rec.tag = op === A ? t1 : ...; return rec }`
+  (`inlineYieldOpcodes`), tags resolved as before.
+- **Namespace aliases and records.** The export target is `let X = this === G ? G : NS`, and VM
+  bookkeeping (TDZ sets of hoisted functions, call flags) lives in records `let R = NS.k ||= {...}`.
+  Both are recognized so host statements on them are dropped like statements on `NS`.
 
-Hard builds added here: a18_kitchen_sink, t_test15, d13_sat_solver (v8.4.0, VM Low).
+### Handler shapes (`src/classify/rules.js`, section ">= 8.4 handler variants")
+
+New rules map the changed shapes onto existing mnemonics: `PUSH_THIS` (plain and derived-ctor),
+`===`/`!==` written with a nullish fast path (also inside the `BINOP_MEGA` ladder), flat
+`LOAD_SCOPE`/`STORE_SCOPE` with a `names` TDZ record, global load/store/decl/delete with a separate
+TDZ record object, `CALL`/`CALL_METHOD`/`NEW` with the arguments *above* the callee, wrapped
+`THROW`, accessor/method/data/field defines (inserted `name`, private brand bit, masked key
+`OP & 0xffffff` via `operandMask`), mode-selector object spread, lazily built `arguments`,
+`STORE_ARG`, `MAKE_CLOSURE`, and a new `REST_ARGS` op (lifted as `Array.prototype.slice.call(arguments, n)`
+so the existing rest-parameter recovery applies).
+
+### Extraction (`src/extract/`)
+
+- The single-step sandbox rebinds prologue aliases of overridden state (`OT = stack`), otherwise
+  the secondary dispatch functions act on the prologue's stack.
+- Every closure is now the same non-constructible wrapper and carries the source's *inferred* name
+  (`const f = function () {}` has `f.name === 'f'`), so neither kind nor name can be read off it.
+  The kind comes from the VM's own `MAKE_CLOSURE` flags (a step-function variant records the
+  generator/async/arrow tests of its builder chain); the inferred name is kept as `inferredName`
+  only.
+- Behavioural probes run under the sandbox watchdog (`X.guard`), so a handler that loops on
+  synthetic state times out instead of hanging.
+
+### Lifting and emit (`src/lift/`, `src/emit/`)
+
+- for-of heads without the trailing `DROP`; for-in with the index increment before the skip target.
+- `var {} = (NS.x = x, 0)` export leftovers, host TDZ guards on records, inlined `#x in o` helpers.
+- `const f = function f() {}` -> declaration no longer collides with the crawled scope binding.
 
 ---
 
-## Status update (2026-10-20, after deeper investigation)
+## History
 
-The handler-local alias resolution is limited to the **data-plane registers** (operand stack, sp,
-pc, consts, regs). Extending it to control-plane roles (scope/ns/this/...) was tried and **reverted**:
-it changed the canonical form of some *older*-build handlers and dropped the baseline from 116 to 0
-clean passes (still 120/120 stdout match, but with warnings). So the shipped change is deliberately
-conservative and verified no-regression (baseline unchanged: 116/120 clean, 120/120 match, 0 errors).
-
-**Delivered:** 8.4.0 opcode classification 3 -> ~75-86 by handler shape; state canonicalizes to
-S/SP/PC/K/OP everywhere.
-
-**Remaining for full 8.4.0 PASS (a larger, separate effort):** role *inference* must be adapted to
-8.4.0, where these come back null: `jumps`, `scope`, `scopeProps`, `regs`, `args`. Two root causes:
-  1. Detectors for jumps/tries/newTarget scan handler text for the *root* register names, but 8.4.0
-     handlers use aliases (needs alias-aware detection, threaded carefully to avoid baseline drift).
-  2. The scope object moved from the prologue into a handler (opcode ~276) with obfuscated keys
-     `{p0:slots, p1:constFlags, p2:selfIdx, p3:parent}`; `inferRoles` only scans the prologue.
-Plus ~10 new rules for genuinely-changed shapes (ENTER_SCOPE new layout, `S[SP++]=THIS`, super-ctor,
-spread/rest variants, masked operand `K[OP&16777215]`). Each inferRoles change needs a full 120-build
-regression run, since it affects all builds.
-
----
-
-## Progress update (2026-10-20, role detection phase)
-
-Three regression-safe detectors added to `src/locate/index.js` (`inferAliasedRoles`, run after
-`attachStateAliases`), each guarded by `if (!roles.X)` so older builds — where inferRoles already
-finds everything — are untouched (verified: baseline stays 116/120 clean, 120/120 match, 0 errors):
-
-1. **Alias resolution** (data-plane registers): 3 -> ~75 classified.
-2. **Jump table** detection (`pc = TABLE[pc]`, pc aliased): -> ~82.
-3. **Scope register + scope properties** (scope object now built in a handler with obfuscated keys
-   `{slots,constFlags,selfIdx,parent}`, plus the `names` property): -> ~90-101 across the 11 builds.
-
-8.4.0 classification by handler shape is now ~90-101 of 118-136 opcodes (was 3). Still not a clean
-PASS (every opcode must be identified). The remaining tail (see remaining_unclassified_shapes.txt):
-  - **scope/global TDZ loads where the scope/namespace is itself aliased** (`v2.p0 && x in v2.p0`):
-    needs control-plane (SC/NS) alias resolution, which regressed the baseline when added bluntly —
-    needs a scoped, per-handler approach.
-  - **regs (R) and tries (TT) not yet detected** on 8.4.0 (iterator-next, try-enter opcodes).
-  - **operand re-decoding**: newer opcodes mask the operand (`K[OP&16777215]`, `OP&65535`,`OP>>>16`).
-  - **~12-15 new rules** for shapes with no older equivalent (PUSH_THIS `S[SP++]=THIS`, null-safe
-    `==`/`!=`, spread/rest arg builders, super-constructor, masked-operand define/get).
-Each remaining item needs its own detection/rule plus a full 120-build regression run.
+- 2026-10-20: 0/8, 3 of 118 opcodes classified. Alias resolution, jump table and scope detection
+  brought shape classification to ~90-101 of 118-136.
+- 2026-10-21: remaining roles, rules, extraction and lifting fixes as above: 11/11.
