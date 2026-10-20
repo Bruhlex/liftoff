@@ -58,6 +58,9 @@ function evalLadder(handler, selName, resultName, sel, canonNames) {
     if (t.isAssignmentExpression(node) && t.isIdentifier(node.left, { name: resultName })) { visit(node.right); return; }
     if (t.isConditionalExpression(node)) {
       const c = evalCond(node.test);
+      // >= 8.4 writes `===`/`!==` with a nullish fast path (`a==null ? b===a : a===b`); both arms
+      // are the same strict comparison, so the general (alternate) arm names the operator.
+      if (c === null && t.isBinaryExpression(node.test, { operator: '==' }) && t.isNullLiteral(node.test.right)) { visit(node.alternate); return; }
       if (c === null) return;
       visit(c ? node.consequent : node.alternate);
       return;
@@ -87,7 +90,8 @@ function binopMegaInfo(handler, roles, helpers) {
     }
   });
   t.traverseFast({ type: 'BlockStatement', body: handler.body, directives: [] }, (n) => {
-    if (t.isAssignmentExpression(n) && t.isMemberExpression(n.left) && t.isIdentifier(n.left.object, { name: roles.stack }) && t.isIdentifier(n.right)) resultName = n.right.name;
+    // the stack may be a handler-local alias in newer builds (rmap carries the resolved aliases)
+    if (t.isAssignmentExpression(n) && t.isMemberExpression(n.left) && t.isIdentifier(n.left.object) && rmap.get(n.left.object.name) === 'S' && t.isIdentifier(n.right)) resultName = n.right.name;
   });
   const ladder = {};
   for (let sel = 0; sel < 64; sel++) {
@@ -314,9 +318,31 @@ const RULES = [
   // Data property with a computed key (pops value,key,target), possibly named/branded.
   [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[--SP\];/.test(s) && /Object_defineProperty\(v2,v1,\{value:v0,writable:true,enumerable:true,configurable:true\}\);/.test(s) && 'DEFINE_PROP_COMPUTED'],
   // Data property with a named (masked) const key (pops value,target).
-  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=K\[OP&16777215\];Object_defineProperty\(v1,v2,\{value:v0,writable:true,enumerable:true,configurable:true\}\);/.test(s) && 'DEFINE_PROP_NAMED'],
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=K\[OP&16777215\];Object_defineProperty\(v1,v2,\{value:v0,writable:true,enumerable:true,configurable:true\}\);/.test(s) && { mnemonic: 'DEFINE_PROP_NAMED', operandMask: 0xffffff }],
   // Class field: define-or-assign with a named (masked) const key, keeping the target on the stack.
-  [(s) => /^let v0=S\[--SP\];let v1=S\[SP-1\];let v2=K\[OP&16777215\];if\(v2 in v1\)\{Object_defineProperty\(v1,v2,\{value:v0,/.test(s) && 'DEFINE_METHOD_NAMED'],
+  [(s) => /^let v0=S\[--SP\];let v1=S\[SP-1\];let v2=K\[OP&16777215\];if\(v2 in v1\)\{Object_defineProperty\(v1,v2,\{value:v0,/.test(s) && { mnemonic: 'DEFINE_METHOD_NAMED', operandMask: 0xffffff }],
+  // Method call: count on top, then the arguments, then the callee, then `this` (Reflect.apply).
+  [(s) => /^let v0=S\[--SP\];let v1;if\(v0===0\)\{v1=EMPTYARRAY;\}else if\(v0===1\)\{/.test(s) && /\}let v6=S\[--SP\];let v7=S\[--SP\];if\(typeof v6!=="function"\)\{throw new TypeError\(v6\+" is not a function"\);\}/.test(s) && /Reflect_apply\(v6,v7,v1\)/.test(s) && { mnemonic: 'CALL_METHOD', calleeBelowArgs: true }],
+  // Lazily built `arguments` object (a Proxy carrying length/callee/iterator).
+  [(s) => /"callee"/.test(s) && /new Proxy\(/.test(s) && /^if\(v0===null\)\{/.test(s) && /S\[SP\+\+\]=v0;PC\+\+;$/.test(s) && 'PUSH_ARGUMENTS'],
+  // `this` in a derived constructor, resolved from the scope once super() has run.
+  [(s) => /^if\(v\d&&!v\d\)\{let v\d=v\d\(SC\);if\(v\d!==undefined\)\{THIS=v\d;v\d=true;\}else\{throw new ReferenceError\("Must call super constructor/.test(s) && /\}S\[SP\+\+\]=THIS;PC\+\+;$/.test(s) && 'PUSH_THIS'],
+  // Store into the arguments array (copied to a real array first if needed).
+  [(s) => /^if\(v0===null&&\(v1\|\|!v2\)&&ARGS\)\{v0=v3\(ARGS\);\}if\(ARGS&&OP>=ARGS\.length&&!Array_isArray\(ARGS\)\)\{ARGS=v3\(ARGS\);\}ARGS\[OP\]=S\[--SP\];PC\+\+;$/.test(s) && 'STORE_ARG'],
+  // Methods with a computed key, an optional inserted `name` (OP&1) and private brand (OP&2):
+  // on the object itself, or on its prototype; pop value and key, keep the target.
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[SP-1\];if\(!\(OP&1\)\)\{H_safeDefine\(v0,"name",/.test(s) && /\}Object_defineProperty\(v2,v1,\{value:v0,writable:true,enumerable:false,configurable:true\}\);/.test(s) && 'DEFINE_METHOD_COMPUTED'],
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[SP-1\];if\(!\(OP&1\)\)\{H_safeDefine\(v0,"name",/.test(s) && /\}Object_defineProperty\(v2\.prototype,v1,\{value:v0,writable:true,enumerable:false,configurable:true\}\);/.test(s) && 'DEFINE_PROTO_METHOD_COMPUTED'],
+  // Accessors with a computed key directly on the target (no proto-target helper).
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[SP-1\];if\(OP!==1\)\{H_safeDefine\(v0,"name",/.test(s) && /\}Object_defineProperty\(v2,v1,\{get:v0,enumerable:false,configurable:true\}\);PC\+\+;$/.test(s) && { mnemonic: 'DEFINE_GETTER_COMPUTED', protoTarget: false }],
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[SP-1\];if\(OP!==1\)\{H_safeDefine\(v0,"name",/.test(s) && /\}Object_defineProperty\(v2,v1,\{set:v0,enumerable:false,configurable:true\}\);PC\+\+;$/.test(s) && { mnemonic: 'DEFINE_SETTER_COMPUTED', protoTarget: false }],
+  // Methods with a named (masked) const key, on the target or its prototype.
+  [(s) => /^let v0=S\[--SP\];let v1=S\[SP-1\];let v2=K\[OP&16777215\];Object_defineProperty\(v1,v2,\{value:v0,writable:true,enumerable:false,configurable:true\}\);/.test(s) && { mnemonic: 'DEFINE_METHOD_NAMED', operandMask: 0xffffff }],
+  [(s) => /^let v0=S\[--SP\];let v1=S\[SP-1\];let v2=K\[OP&16777215\];Object_defineProperty\(v1\.prototype,v2,\{value:v0,writable:true,enumerable:false,configurable:true\}\);/.test(s) && { mnemonic: 'DEFINE_PROTO_METHOD_NAMED', operandMask: 0xffffff }],
+  // Closure creation from a program reference (flags: arrow/generator/async/class/strict).
+  [(s) => /^let v0=S\[--SP\];let v1=v0;let v2=0&&typeof v0!=="object"\?v\d\(v0,1\):undefined;/.test(s) && /"length"/.test(s) && /S\[SP\+\+\]=v\d+;PC\+\+;$/.test(s) && 'MAKE_CLOSURE'],
+  // Rest parameter: the arguments from index OP on, as a fresh array.
+  [(s) => /^let v0=v\d\|\|ARGS;let v\d=v0\?v0\.length:0;let v(\d)=\[\];for\(let v(\d)=OP;v\2<v\d;v\2\+\+\)\{v\1\[v\2-OP\]=v0\[v\2\];\}S\[SP\+\+\]=v\1;PC\+\+;$/.test(s) && 'REST_ARGS'],
   // Object spread with a mode selector (fresh / merge / copy own-enumerable).
   [(s) => /^let v0=S\[--SP\];let v1=S\[SP-1\];if\(OP===2\)\{S\[SP-1\]=\{\.\.\.v0\};\}else if\(OP===1\)\{S\[SP-1\]=\{\.\.\.v1,\.\.\.v0\};\}/.test(s) && 'OBJ_SPREAD'],
 ];

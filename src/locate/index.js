@@ -18,7 +18,7 @@
 
 const parser = require('@babel/parser');
 const t = require('@babel/types');
-const { findGlobalName, findNamespaceName, findNamespaceKey, findNamespaceAliases, isGeneratorCopy, yieldOpcodes, resolveYieldTags } = require('./runtime');
+const { findGlobalName, findNamespaceName, findNamespaceKey, findNamespaceAliases, findNamespaceRecords, isGeneratorCopy, yieldOpcodes, inlineYieldOpcodes, resolveYieldTags } = require('./runtime');
 const { findInterpreterLoops, parseFetch, collectHandlers } = require('./interpreter');
 const { inferRoles, collectFactoryHelpers, declaredLocals, prologueStatements } = require('./roles');
 
@@ -34,6 +34,7 @@ function locate(code, { log = () => {} } = {}) {
   const nsName = findNamespaceName(ast, globalName);
   const nsKey = nsName ? findNamespaceKey(ast, globalName, nsName) : null;
   const nsAliases = findNamespaceAliases(ast, globalName, nsName);
+  const nsRecords = findNamespaceRecords(ast, nsName);
   const loops = findInterpreterLoops(ast);
   if (!loops.length) throw new Error('No VM interpreter loop found - not an obfuscator.io Virtualization build?');
 
@@ -66,8 +67,9 @@ function locate(code, { log = () => {} } = {}) {
   inferAliasedRoles(handlers, roles);
 
   let yields = { await: null, yield: null, yieldStar: null };
-  if (genCopy) {
-    const ys = yieldOpcodes(genCopy.loop.inner, genCopy.fetch, factoryPath);
+  // >= 8.4: no generator copy; the suspending opcodes are handled inline in the one interpreter
+  const ys = genCopy ? yieldOpcodes(genCopy.loop.inner, genCopy.fetch, factoryPath) : inlineYieldOpcodes(plain.loop.inner, plain.fetch, factoryPath);
+  if (ys.length) {
     const tagKey = ys.find((y) => y.tagKey)?.tagKey;
     const tagRoles = resolveYieldTags(factoryPath, tagKey);
     for (const y of ys) {
@@ -78,7 +80,7 @@ function locate(code, { log = () => {} } = {}) {
   }
 
   log(`interpreter found: ${interpreters.length} copies, ${handlers.length} handler bodies, factory=${factoryPath.node.id?.name || '(iife)'}`);
-  return { ast, code, globalName, nsName, nsKey, nsAliases, factoryPath, plain, genCopy, handlers, roles, helpers, yields };
+  return { ast, code, globalName, nsName, nsKey, nsAliases, nsRecords, factoryPath, plain, genCopy, handlers, roles, helpers, yields };
 }
 
 /**
@@ -241,6 +243,25 @@ function inferAliasedRoles(handlers, roles) {
         }
       });
     }
+  }
+
+  // callee (>= 8.4): the parameter the self-binding handler stores into a scope slot
+  // (`scope.slots[i] = P`). inferRoles falls back to "the first leftover parameter", which is wrong
+  // when the frame takes more parameters; it can only check this once roles.scope is known.
+  if (roles.resumeFrame && roles.scope && roles.scopeProps && roles.scopeProps.slots && roles.params) {
+    const known = new Set([roles.prog, roles.args, roles.this, roles.parentScope, roles.resumeFrame, roles.newTarget]);
+    const cands = new Set(roles.params.filter((p) => p && !known.has(p)));
+    let found = null;
+    for (const h of handlers) {
+      if (found) break;
+      for (const st of h.body) t.traverseFast(st, (n) => {
+        if (found || !t.isAssignmentExpression(n, { operator: '=' }) || !t.isIdentifier(n.right) || !cands.has(n.right.name)) return;
+        const l = n.left;
+        if (t.isMemberExpression(l, { computed: true }) && t.isMemberExpression(l.object) && t.isIdentifier(l.object.object, { name: roles.scope }) &&
+            (t.isIdentifier(l.object.property, { name: roles.scopeProps.slots }) || t.isStringLiteral(l.object.property, { value: roles.scopeProps.slots }))) found = n.right.name;
+      });
+    }
+    if (found) roles.callee = found;
   }
 }
 

@@ -69,6 +69,26 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
   // consider every heavily-indexed program parameter, not only the most-used.
   const progParams = sortedProg.filter(([, c]) => c >= 3).map(([n]) => n);
   if (roles.prog && !progParams.includes(roles.prog)) progParams.push(roles.prog);
+  // >= 8.4: `if (F === undefined) { fresh init from P[...] } else { resume from F[...] }`. The resume
+  // frame F is indexed more often, but the program is P, the parameter read in the fresh branch;
+  // F must stay undefined when a program is started (e.g. by the extractor).
+  for (const st of prologue) {
+    t.traverseFast(st, (n) => {
+      if (roles.resumeFrame || !t.isIfStatement(n) || !n.alternate) return;
+      const tst = n.test;
+      if (!t.isBinaryExpression(tst, { operator: '===' }) || !t.isIdentifier(tst.left) || !t.isIdentifier(tst.right, { name: 'undefined' })) return;
+      const f = tst.left.name;
+      if (f !== roles.prog) return;
+      const counts = new Map();
+      t.traverseFast(n.consequent, (m) => {
+        if (t.isMemberExpression(m, { computed: true }) && t.isIdentifier(m.object) && params.includes(m.object.name) && m.object.name !== f) {
+          counts.set(m.object.name, (counts.get(m.object.name) || 0) + 1);
+        }
+      });
+      const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (best) { roles.resumeFrame = f; roles.prog = best[0]; }
+    });
+  }
 
   // stack / sp: `X[Y++] = ...`
   fnPath.traverse({
@@ -300,7 +320,7 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
   }
 
   // remaining params: newTarget (a handler is exactly `stack[sp++] = P`) and callee
-  const known = new Set([roles.prog, roles.args, roles.this, roles.parentScope]);
+  const known = new Set([roles.prog, roles.args, roles.this, roles.parentScope, roles.resumeFrame]);
   const rest = params.filter((p) => p && !known.has(p));
   for (const h of handlers) {
     const txt = bodyText(h);
@@ -308,7 +328,26 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
       if (new RegExp(`^${roles.stack}\\[${roles.sp}\\+\\+\\]=${p};${roles.pc}\\+\\+;(?:break;|continue;)?$`).test(txt)) roles.newTarget = p;
     }
   }
-  roles.callee = rest.find((p) => p !== roles.newTarget) || null;
+  if (roles.resumeFrame) {
+    // >= 8.4: handlers in the secondary dispatch use aliases of stack/sp/pc, so match any names
+    if (!roles.newTarget) {
+      for (const h of handlers) {
+        const m = bodyText(h).match(/^\w+\[\w+\+\+\]=(\w+);\w+\+\+;(?:break;|continue;)?$/);
+        if (m && rest.includes(m[1])) { roles.newTarget = m[1]; break; }
+      }
+    }
+    // the callee is what the self-binding handler stores into a scope slot (`scope.slots[i] = P`);
+    // with more leftover parameters than older builds have, "the first remaining one" is not enough
+    const slots = roles.scopeProps && roles.scopeProps.slots;
+    if (roles.scope && slots) {
+      for (const h of handlers) {
+        if (roles.callee) break;
+        const m = bodyText(h).match(new RegExp(`\\b${roles.scope}\\.${slots.replace(/\$/g, '\\$')}\\[\\w+\\]=(\\w+);`));
+        if (m && rest.includes(m[1]) && m[1] !== roles.newTarget) roles.callee = m[1];
+      }
+    }
+  }
+  if (!roles.callee) roles.callee = rest.find((p) => p !== roles.newTarget) || null;
   roles.params = params;
 
   // scope "names" property: `(scope.X ||= {})[slot] = consts[...]`

@@ -157,6 +157,11 @@ function restorePrivateMembers(file, privateSymbols) {
   traverse.cache.clear();
   traverse(file, {
     CallExpression(p) {
+      // `#x in o` helper inlined as an IIFE (>= 8.4): `(function (o) { ... })(b)`
+      if (t.isFunction(p.node.callee) && p.node.arguments.length === 1) {
+        const k = privateInKey(p.node.callee);
+        if (k) { p.replaceWith(t.binaryExpression('in', t.privateName(t.identifier(privName(k))), p.node.arguments[0])); return; }
+      }
       // `#x in o` helper call
       if (t.isIdentifier(p.node.callee) && p.node.arguments.length === 1) {
         const b = p.scope.getBinding(p.node.callee.name);

@@ -140,6 +140,12 @@ function createSandbox(vm) {
     return [...a, P];
   };
   X.firstProgram = () => { try { return X.mainLoader(0); } catch { return null; } };
+  // Run fn under the context's watchdog: probing an unknown handler with synthetic state can loop
+  // (e.g. a copy loop bounded by a sentinel object's length); a timeout throws instead of hanging.
+  X.guard = (fn, timeout = 2000) => {
+    ctx.__liftoffThunk = fn;
+    try { return nodeVm.runInContext('__liftoffThunk()', ctx, { timeout }); } finally { delete ctx.__liftoffThunk; }
+  };
   return { X, built };
 }
 

@@ -72,6 +72,28 @@ function findNamespaceAliases(ast, globalName, nsName) {
 }
 
 /**
+ * Runtime records kept on the namespace (>= 8.4): `let R = NS.KEY ||= {...}` (or
+ * `NS.KEY || (NS.KEY = {...})`). The VM keeps bookkeeping there (TDZ sets of hoisted functions,
+ * call-state flags) that older builds kept on the namespace itself, so host statements touching
+ * such a record are VM boilerplate just like statements on the namespace.
+ */
+function findNamespaceRecords(ast, nsName) {
+  const records = new Set();
+  if (!nsName) return records;
+  const onNS = (n) => t.isMemberExpression(n) && t.isIdentifier(n.object, { name: nsName });
+  const isRecordInit = (init) => {
+    if (t.isAssignmentExpression(init, { operator: '||=' }) && onNS(init.left) && t.isObjectExpression(init.right)) return true;
+    return t.isLogicalExpression(init, { operator: '||' }) && onNS(init.left) &&
+      t.isAssignmentExpression(init.right, { operator: '=' }) && onNS(init.right.left) && t.isObjectExpression(init.right.right);
+  };
+  for (const st of ast.program.body) {
+    if (!t.isVariableDeclaration(st)) continue;
+    for (const d of st.declarations) if (t.isIdentifier(d.id) && d.id.name !== nsName && d.init && isRecordInit(d.init)) records.add(d.id.name);
+  }
+  return records;
+}
+
+/**
  * The object literal returned in `block`: `return {...}`, or `var o = {...}; return o;` as builds
  * with transformObjectKeys write it.
  */
@@ -124,6 +146,48 @@ function yieldOpcodes(inner, fetch, factoryPath) {
 }
 
 /**
+ * >= 8.4 has no generator copy of the interpreter: the one loop handles the suspending opcodes
+ * inline, `if (op === A || op === B || op === C) { ...save frame...; rec.TAG = op === A ? t1 :
+ * op === B ? t2 : t3; rec.VALUE = popped; return rec; }`. Returns the same shape as yieldOpcodes.
+ */
+function inlineYieldOpcodes(inner, fetch, factoryPath) {
+  const constVal = (name) => {
+    const b = factoryPath.scope.getBinding(name);
+    return b && b.path.isVariableDeclarator() && t.isNumericLiteral(b.path.node.init) ? b.path.node.init.value : null;
+  };
+  const isOpEq = (n) => t.isBinaryExpression(n, { operator: '===' }) && t.isIdentifier(n.left, { name: fetch.op }) && t.isIdentifier(n.right);
+  const orTerms = (n, out) => {
+    if (t.isLogicalExpression(n, { operator: '||' })) return orTerms(n.left, out) && orTerms(n.right, out);
+    if (isOpEq(n)) { out.push(n.right.name); return true; }
+    return false;
+  };
+  for (const st of inner.body.body) {
+    const names = [];
+    if (!t.isIfStatement(st) || !t.isLogicalExpression(st.test) || !orTerms(st.test, names) || names.length < 2) continue;
+    if (!t.isBlockStatement(st.consequent) || !st.consequent.body.some((s) => t.isReturnStatement(s))) continue;
+    let out = null;
+    t.traverseFast(st.consequent, (n) => {
+      if (out || !t.isAssignmentExpression(n, { operator: '=' }) || !t.isMemberExpression(n.left) || !t.isConditionalExpression(n.right)) return;
+      const tagKey = t.isIdentifier(n.left.property) && !n.left.computed ? n.left.property.name : t.isStringLiteral(n.left.property) ? n.left.property.value : null;
+      if (!tagKey) return;
+      // walk `op === A ? tA : op === B ? tB : tC`
+      const tags = new Map();
+      let c = n.right;
+      while (t.isConditionalExpression(c) && isOpEq(c.test) && t.isIdentifier(c.consequent)) {
+        tags.set(c.test.right.name, constVal(c.consequent.name));
+        c = c.alternate;
+      }
+      const last = names.find((x) => !tags.has(x));
+      if (last && t.isIdentifier(c)) tags.set(last, constVal(c.name));
+      if (tags.size !== names.length) return;
+      out = names.map((x) => ({ opcode: constVal(x), tag: tags.get(x), tagKey }));
+    });
+    if (out) return out;
+  }
+  return [];
+}
+
+/**
  * Determine which of the yield tags means await / yield / yield*.
  * The async runner throws "Unexpected yield in async context" unless the tag equals the AWAIT tag;
  * the generator runner treats one tag as a plain yield (returns {value, done:false}) and the other as
@@ -168,4 +232,4 @@ function resolveYieldTags(factoryPath, tagKey) {
   return result;
 }
 
-module.exports = { findGlobalName, findNamespaceName, findNamespaceKey, findNamespaceAliases, isGeneratorCopy, yieldOpcodes, resolveYieldTags };
+module.exports = { findGlobalName, findNamespaceName, findNamespaceKey, findNamespaceAliases, findNamespaceRecords, isGeneratorCopy, yieldOpcodes, inlineYieldOpcodes, resolveYieldTags };

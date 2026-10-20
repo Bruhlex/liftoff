@@ -33,6 +33,13 @@ const ops = {
   },
   PUSH_NEW_TARGET({ push }) { push(t.metaProperty(t.identifier('new'), t.identifier('target'))); },
   PUSH_ARGUMENTS({ state, push }) { state.usesArguments = true; push(t.identifier('arguments')); },
+  // >= 8.4 collects a rest parameter in one instruction (the arguments from index `operand` on);
+  // written the way older builds spell it so buildFunction turns it back into `...rest`.
+  REST_ARGS({ state, operand, push }) {
+    state.usesArguments = true;
+    const slice = t.memberExpression(t.memberExpression(t.memberExpression(t.identifier('Array'), t.identifier('prototype')), t.identifier('slice')), t.identifier('call'));
+    push(t.callExpression(slice, [t.identifier('arguments'), t.numericLiteral(operand)]));
+  },
   PUSH_SCOPE({ push }) { const s = t.identifier('__scope'); s.__marker = 'scope'; push(s); },
   PUSH_SUPER_CTOR({ push }) { const s = t.identifier('__superCtor'); s.__marker = 'superCtor'; push(s); },
   DUP({ stack, push }) { const v = this.peek(stack); if (v && typeof v === 'object') v.__dup = true; push(v); },

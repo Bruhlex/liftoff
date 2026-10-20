@@ -62,6 +62,14 @@ function buildStepFunction(vm) {
   for (const [key, role] of [['regs', 'regs'], ['consts', 'consts'], ['jumps', 'jumps'], ['args', 'args']]) {
     if (roles[role]) lines.push(`if (__P.${key}) ${roles[role]} = __P.${key};`);
   }
+  // >= 8.4: the secondary dispatch functions reach the state through aliases bound at the top of the
+  // prologue (`OT = stack`); rebind them so they see the overridden state, not the prologue's.
+  const overridden = new Set([roles.stack, roles.scope, roles.this, roles.lexThis, roles.newTarget, roles.regs, roles.consts, roles.jumps, roles.args].filter(Boolean));
+  for (const st of prologue) {
+    if (!t.isExpressionStatement(st) || !t.isAssignmentExpression(st.expression, { operator: '=' })) continue;
+    const { left, right } = st.expression;
+    if (t.isIdentifier(left) && t.isIdentifier(right) && overridden.has(right.name) && !overridden.has(left.name)) lines.push(`${left.name} = ${right.name};`);
+  }
   lines.push(`const __before = __P.fp ? __P.fp(__snap()) : __snap();`);
   lines.push(`let __ret = __P.NORET, __threw = __P.NORET;`);
   lines.push(`try { __ret = (() => { for (let __i = 0; __i < 1; __i++) ${body} return __P.NORET; })(); } catch (__e) { __threw = __e; }`);

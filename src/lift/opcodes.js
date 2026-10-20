@@ -41,6 +41,10 @@ module.exports = {
       return;
     }
     const K = state.prog.consts;
+    // >= 8.4 packs flags into the operand's high bits (e.g. a private-brand flag above a 24-bit
+    // constant index); the rule records the mask of the part the instruction's semantics use.
+    const me = this.entry(op);
+    if (me.operandMask !== undefined) operand &= me.operandMask;
     handler.call(this, {
       state, m, op, operand, stack, emit, pc, K,
       e: this.entry(op),

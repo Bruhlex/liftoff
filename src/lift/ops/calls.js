@@ -38,11 +38,12 @@ const ops = {
       push(this.callExpr(callee, args, null));
     }
   },
-  CALL_METHOD({ m, operand, stack, K, push, pop }) {
+  CALL_METHOD({ m, e, operand, stack, K, push, pop }) {
     const argc = m === 'CALL_METHOD_IMM' ? (K[operand] && K[operand].t === 'number' ? K[operand].v : 0) : this.popLit(stack);
-    const callee = pop();
-    const thisObj = pop();
-    const args = this.popN(stack, argc);
+    // >= 8.4 pushes [this, callee, args..., count] (args above the callee), older builds [args..., this, callee, count]
+    let callee, thisObj, args;
+    if (e.calleeBelowArgs) { args = this.popN(stack, argc); callee = pop(); thisObj = pop(); }
+    else { callee = pop(); thisObj = pop(); args = this.popN(stack, argc); }
     // a thunk run with the class under construction as `this` is a static initializer
     if (thisObj && thisObj.__builder && t.isClassExpression(thisObj) && !args.length && t.isFunctionExpression(callee) && !callee.params.length && !callee.async && !callee.generator) {
       const block = t.staticBlock(callee.body.body);

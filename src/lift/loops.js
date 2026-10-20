@@ -99,9 +99,10 @@ computeLoopEnds(state) {
     {
       let p = H;
       const flagRegs = [];
-      while (p + 2 < L && this.mnem(instrs[p][0]) === 'PUSH_CONST' && this.mnem(instrs[p + 1][0]) === 'STORE_REG' && this.mnem(instrs[p + 2][0]) === 'DROP') {
+      // (>= 8.4 stores the flag as a statement without the trailing DROP)
+      while (p + 1 < L && this.mnem(instrs[p][0]) === 'PUSH_CONST' && this.mnem(instrs[p + 1][0]) === 'STORE_REG') {
         flagRegs.push(instrs[p + 1][1]);
-        p += 3;
+        p += this.mnem(instrs[p + 2] ? instrs[p + 2][0] : -1) === 'DROP' ? 3 : 2;
       }
       // for await: LOAD_REG it; ITER_NEXT_CALL; AWAIT; DUP; ITER_RESULT_DONE; JMPT exit; GETPROP "value"
       const M = (q) => this.mnemAt(instrs, q);
@@ -159,9 +160,13 @@ computeLoopEnds(state) {
         state.hiddenRegs.add(idxReg);
         const exit = jumps[H + 4];
         const keyId = t.identifier(this.freshName(state, 'key'));
-        const loopRec = { header: H, exit, update: skip, label: null };
+        // >= 8.4 puts the index increment before the skip target: `body; i++; JMP H; skip: DROP; JMP i++`
+        let bodyEnd = skip;
+        const back = jumps[skip + 1];
+        if (instrs[skip + 1] && this.mnem(instrs[skip][0]) === 'DROP' && UNCOND_JUMP.has(this.mnem(instrs[skip + 1][0])) && back > H + 12 + d && back < skip) bodyEnd = back;
+        const loopRec = { header: H, exit, update: bodyEnd, label: null };
         state.loops.push(loopRec);
-        const body = this.liftRange(state, H + 12 + d, skip, [keyId]);
+        const body = this.liftRange(state, H + 12 + d, bodyEnd, [keyId]);
         state.loops.pop();
         const bodyStmts = body.stmts;
         const left = takeLoopBinding(bodyStmts, keyId);

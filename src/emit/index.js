@@ -235,7 +235,10 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   // a member chain on the namespace is bookkeeping unless it goes through a user binding the
   // namespace carries (`NS.vault.locked = true` is the program's own `vault.locked = true`)
   const userBinding = (n) => t.isMemberExpression(n) && isNS(n.object) && (() => { const k = staticKey(n); return k !== null && isIdentName(k) && !/^_\$/.test(k); })();
-  const onNS = (n) => (t.isMemberExpression(n) && (isNS(n.object) || (onNS(n.object) && !userBinding(n.object)) || isEntry(n.object) || t.isIdentifier(n.object, { name: 'globalThis' })));
+  // runtime records on the namespace (>= 8.4) hold VM bookkeeping only
+  const nsRecords = vm.nsRecords || new Set();
+  const isNSRecord = (n) => t.isIdentifier(n) && nsRecords.has(n.name);
+  const onNS = (n) => (t.isMemberExpression(n) && (isNS(n.object) || isNSRecord(n.object) || (onNS(n.object) && !userBinding(n.object)) || isEntry(n.object) || t.isIdentifier(n.object, { name: 'globalThis' })));
   const isBoilerExpr = (e) => {
     if (t.isSequenceExpression(e)) return e.expressions.every(isBoilerExpr);
     if (t.isAssignmentExpression(e) && onNS(e.left)) return true;
@@ -248,7 +251,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   const isBoilerplate = (st) => {
     if (t.isExpressionStatement(st)) return isBoilerExpr(st.expression);
     if (t.isTryStatement(st)) return st.block.body.every(isBoilerplate) && (!st.handler || st.handler.body.body.length === 0);
-    if (t.isVariableDeclaration(st)) return st.declarations.every((d) => t.isIdentifier(d.id) && (d.id.name === nsName || d.id.name === globalName || d.id.name === entryName || nsAliases.has(d.id.name)));
+    if (t.isVariableDeclaration(st)) return st.declarations.every((d) => t.isIdentifier(d.id) && (d.id.name === nsName || d.id.name === globalName || d.id.name === entryName || nsAliases.has(d.id.name) || nsRecords.has(d.id.name)));
     return false;
   };
   // `NS.key = local`: the VM programs (and globalThis) know a top-level binding by its export key;
@@ -270,7 +273,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   traverse(t.file(t.program(out)), {
     ConditionalExpression(p) {
       const n = p.node;
-      if (t.isMemberExpression(n.test) && t.isMemberExpression(n.test.object) && isNS(n.test.object.object) && throwsReferenceError(n.consequent)) p.replaceWith(n.alternate);
+      if (t.isMemberExpression(n.test) && t.isMemberExpression(n.test.object) && (isNS(n.test.object.object) || isNSRecord(n.test.object.object)) && throwsReferenceError(n.consequent)) p.replaceWith(n.alternate);
     },
   });
   // NS["x"] / NS.x  ->  x

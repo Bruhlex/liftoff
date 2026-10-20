@@ -47,7 +47,7 @@ function inferUnknown(X, vm, opcodes) {
     for (const op of opcodes) {
       let e = null;
       for (const probe of [inferData, inferCall, inferClosure]) {
-        try { e = probe(X, prog, op, ctx); } catch { e = null; }
+        try { e = X.guard ? X.guard(() => probe(X, prog, op, ctx)) : probe(X, prog, op, ctx); } catch { e = null; }
         if (e) break;
       }
       if (e) out.set(op, { ...e, inferred: true });
