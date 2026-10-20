@@ -39,6 +39,9 @@ function roleMap(roles, handler, helpers) {
   set(roles.tryFrames, 'TF');
   set(roles.global, 'G');
   set(roles.ns, 'NS');
+  // local aliases of the namespace (`let X = this===G ? G : NS`): the host program reaches exports
+  // through them, so they canonicalize as NS too (newer builds).
+  if (roles.nsAliases) for (const a of roles.nsAliases) if (!m.has(a)) m.set(a, 'NS');
   set(roles.strict, 'STRICT');
   set(roles.derived, 'DERIVED');
   set(roles.arrowFlag, 'ARROW');

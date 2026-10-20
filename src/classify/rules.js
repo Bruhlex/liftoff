@@ -284,6 +284,41 @@ const RULES = [
   [(s) => /is not a function/.test(s) && /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[--SP\];if\(typeof v1!=="function"\)/.test(s) && 'CALL_METHOD'],
   [(s) => /is not a function/.test(s) && /^L0:\{let v0=S\[--SP\];let v1=S\[--SP\];if\(typeof v1!=="function"\)/.test(s) && 'CALL'],
   [(s) => /is not a function/.test(s) && /^let v0=S\[--SP\];let v1=S\[--SP\];if\(typeof v1!=="function"\)/.test(s) && 'CALL'],
+
+  // --- obfuscator.io >= 8.4 handler variants -------------------------------
+  // The receiver `this` pushed directly (older builds guard it behind the derived-ctor check).
+  [(s) => /^S\[SP\+\+\]=THIS;PC\+\+;$/.test(s) && 'PUSH_THIS'],
+  // Strict (in)equality written with a nullish fast path; both arms are strict, so it is `===`/`!==`.
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];S\[SP\+\+\]=v1==null\?v0===v1:v1===v0;PC\+\+;$/.test(s) && { mnemonic: 'BINOP', op: '===' }],
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];S\[SP\+\+\]=v1==null\?v0!==v1:v1!==v0;PC\+\+;$/.test(s) && { mnemonic: 'BINOP', op: '!==' }],
+  // Scope load/store at a lexical depth, written flat (no label) with a `names` TDZ record.
+  [(s) => /^let v0=OP&65535;let v1=OP>>>16;let v2=SC;for\(let v3=0;v3<v1;v3\+\+\)\{v2=v2\.sc_parent;\}let v4=v2\.sc_slots;let v5=v4\[v0\];if\(v5===v4\)\{let v6=v2\.sc_names;/.test(s) && /S\[SP\+\+\]=v5;PC\+\+;$/.test(s) && 'LOAD_SCOPE'],
+  [(s) => /^let v0=OP&65535;let v1=OP>>>16;let v2=S\[--SP\];let v3=SC;for\(let v4=0;v4<v1;v4\+\+\)\{v3=v3\.sc_parent;\}let v5=v3\.sc_slots;/.test(s) && /Assignment to constant variable/.test(s) && 'STORE_SCOPE'],
+  // Global load/store/delete: newer builds track the TDZ set on a separate record object (`v.p0`),
+  // carry the strict flag in a handler-local, and reach exports through a namespace alias (== NS).
+  [(s) => /^let v0=K\[OP\];let v1;if\(v\d\.p\d&&v0 in v\d\.p\d\)\{throw new ReferenceError\("Cannot access '"/.test(s) && /if\(v0 in NS\)\{v1=NS\[v0\];\}else if\(v0 in G\)\{v1=G\[v0\];\}/.test(s) && 'LOAD_GLOBAL'],
+  [(s) => /^let v0=S\[--SP\];let v1=K\[OP\];if\(v\d&&!\(v1 in G\)&&!\(v1 in NS\)\)\{throw new ReferenceError\(v1\+" is not defined"\);\}NS\[v1\]=v0;G\[v1\]=v0;S\[SP\+\+\]=v0;PC\+\+;$/.test(s) && 'STORE_GLOBAL'],
+  [(s) => /^let v0=S\[--SP\];let v1=K\[OP\];if\(v\d\.p\d&&v1 in v\d\.p\d\)\{throw new ReferenceError\("Cannot access '"/.test(s) && /NS\[v1\]=v0;/.test(s) && /S\[SP\+\+\]=v0;PC\+\+;$/.test(s) && 'STORE_GLOBAL_DECL'],
+  [(s) => /^let v0=K\[OP\];let v1=NS===G;if\(v1\)\{if\(v0 in G\)\{v1=delete G\[v0\];\}/.test(s) && 'DELETE_GLOBAL'],
+  // `new` with a separate args-packing helper (`v(S, SP-=n, n)`) rather than H_popArgs.
+  [(s) => /is not a constructor/.test(s) && /Reflect\.construct\(/.test(s) && /^let v0=S\[--SP\];let v1=v\d\(S,SP-=v0,v0\);let v3=S\[--SP\];/.test(s) && 'NEW'],
+  // throw of a (normalized) value: `throw H(stack)`.
+  [(s) => /^throw v\d\(S\[--SP\]\);$/.test(s) && 'THROW'],
+  // The main call opcode: a dynamic argument count on top, then the arguments, then the callee
+  // (same stack order as `new`). The large body is the inlined in-VM tail-call fast path; only the
+  // stack effect (pop count, pop args, pop callee, push result) matters to the lifter.
+  [(s) => /^L0:\{let v0=S\[--SP\];let v1;let v2;if\(v0===1\)\{v1=S\[--SP\];\}else if\(v0>1\)\{v2=v\d\(S,SP-=v0,v0\);\}let v4=S\[--SP\];if\(typeof v4!=="function"\)\{throw new TypeError\(v4\+" is not a function"\);\}/.test(s) && { mnemonic: 'CALL', calleeBelowArgs: true }],
+  // Accessor with a computed key and an inserted `name` assignment (>= 8.4) before the define.
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[SP-1\];let v3=H_protoTarget\(v2\);/.test(s) && /Object_defineProperty\(v3,v1,\{get:v0,enumerable:v3===v2,configurable:true\}\);PC\+\+;$/.test(s) && { mnemonic: 'DEFINE_GETTER_COMPUTED', protoTarget: true }],
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[SP-1\];let v3=H_protoTarget\(v2\);/.test(s) && /Object_defineProperty\(v3,v1,\{set:v0,enumerable:v3===v2,configurable:true\}\);PC\+\+;$/.test(s) && { mnemonic: 'DEFINE_SETTER_COMPUTED', protoTarget: true }],
+  // Data property with a computed key (pops value,key,target), possibly named/branded.
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=S\[--SP\];/.test(s) && /Object_defineProperty\(v2,v1,\{value:v0,writable:true,enumerable:true,configurable:true\}\);/.test(s) && 'DEFINE_PROP_COMPUTED'],
+  // Data property with a named (masked) const key (pops value,target).
+  [(s) => /^let v0=S\[--SP\];let v1=S\[--SP\];let v2=K\[OP&16777215\];Object_defineProperty\(v1,v2,\{value:v0,writable:true,enumerable:true,configurable:true\}\);/.test(s) && 'DEFINE_PROP_NAMED'],
+  // Class field: define-or-assign with a named (masked) const key, keeping the target on the stack.
+  [(s) => /^let v0=S\[--SP\];let v1=S\[SP-1\];let v2=K\[OP&16777215\];if\(v2 in v1\)\{Object_defineProperty\(v1,v2,\{value:v0,/.test(s) && 'DEFINE_METHOD_NAMED'],
+  // Object spread with a mode selector (fresh / merge / copy own-enumerable).
+  [(s) => /^let v0=S\[--SP\];let v1=S\[SP-1\];if\(OP===2\)\{S\[SP-1\]=\{\.\.\.v0\};\}else if\(OP===1\)\{S\[SP-1\]=\{\.\.\.v1,\.\.\.v0\};\}/.test(s) && 'OBJ_SPREAD'],
 ];
 
 function classifyHandler(text, ctx) {

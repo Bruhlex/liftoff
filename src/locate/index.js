@@ -18,7 +18,7 @@
 
 const parser = require('@babel/parser');
 const t = require('@babel/types');
-const { findGlobalName, findNamespaceName, findNamespaceKey, isGeneratorCopy, yieldOpcodes, resolveYieldTags } = require('./runtime');
+const { findGlobalName, findNamespaceName, findNamespaceKey, findNamespaceAliases, isGeneratorCopy, yieldOpcodes, resolveYieldTags } = require('./runtime');
 const { findInterpreterLoops, parseFetch, collectHandlers } = require('./interpreter');
 const { inferRoles, collectFactoryHelpers, declaredLocals, prologueStatements } = require('./roles');
 
@@ -33,6 +33,7 @@ function locate(code, { log = () => {} } = {}) {
   const globalName = findGlobalName(ast);
   const nsName = findNamespaceName(ast, globalName);
   const nsKey = nsName ? findNamespaceKey(ast, globalName, nsName) : null;
+  const nsAliases = findNamespaceAliases(ast, globalName, nsName);
   const loops = findInterpreterLoops(ast);
   if (!loops.length) throw new Error('No VM interpreter loop found - not an obfuscator.io Virtualization build?');
 
@@ -59,6 +60,7 @@ function locate(code, { log = () => {} } = {}) {
   const roles = inferRoles(plain.fnPath, plain.loop, plain.fetch, handlers, globalName);
   roles.global = globalName;
   roles.ns = nsName;
+  roles.nsAliases = nsAliases;
   const helpers = collectFactoryHelpers(factoryPath);
   attachStateAliases(handlers, roles);
   inferAliasedRoles(handlers, roles);
@@ -76,7 +78,7 @@ function locate(code, { log = () => {} } = {}) {
   }
 
   log(`interpreter found: ${interpreters.length} copies, ${handlers.length} handler bodies, factory=${factoryPath.node.id?.name || '(iife)'}`);
-  return { ast, code, globalName, nsName, nsKey, factoryPath, plain, genCopy, handlers, roles, helpers, yields };
+  return { ast, code, globalName, nsName, nsKey, nsAliases, factoryPath, plain, genCopy, handlers, roles, helpers, yields };
 }
 
 /**

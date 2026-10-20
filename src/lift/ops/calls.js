@@ -24,11 +24,19 @@ const ops = {
   ASYNC_ITER_CLOSE({ push, pop }) { pop(); push(t.callExpression(t.memberExpression(t.identifier('Promise'), t.identifier('resolve')), [])); },
   FOR_IN_KEYS({ push, pop }) { const obj = pop(); const n = t.identifier('__keys'); n.__marker = 'forInKeys'; n.__src = obj; push(n); },
   // calls
-  CALL({ stack, push, pop }) {
+  CALL({ e, stack, push, pop }) {
     const argc = this.popLit(stack);
-    const callee = pop();
-    const args = this.popN(stack, argc);
-    push(this.callExpr(callee, args, null));
+    // Older builds push [count, callee, args...]; newer ones (>= 8.4) push [count, args..., callee],
+    // the same order `new` uses, so the callee is popped after the arguments.
+    if (e.calleeBelowArgs) {
+      const args = this.popN(stack, argc);
+      const callee = pop();
+      push(this.callExpr(callee, args, null));
+    } else {
+      const callee = pop();
+      const args = this.popN(stack, argc);
+      push(this.callExpr(callee, args, null));
+    }
   },
   CALL_METHOD({ m, operand, stack, K, push, pop }) {
     const argc = m === 'CALL_METHOD_IMM' ? (K[operand] && K[operand].t === 'number' ? K[operand].v : 0) : this.popLit(stack);

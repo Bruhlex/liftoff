@@ -61,7 +61,14 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
       }
     });
   }
-  roles.prog = [...memberCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const sortedProg = [...memberCounts.entries()].sort((a, b) => b[1] - a[1]);
+  roles.prog = sortedProg[0]?.[0] || null;
+  // Program-data parameters that slots are read from. Older builds have a single one (== roles.prog).
+  // Newer builds (>= 8.4) pass the fresh program data and the saved resume frame as two parameters,
+  // and a few slots (e.g. the try table) are only read from the fresh one, so slot detection must
+  // consider every heavily-indexed program parameter, not only the most-used.
+  const progParams = sortedProg.filter(([, c]) => c >= 3).map(([n]) => n);
+  if (roles.prog && !progParams.includes(roles.prog)) progParams.push(roles.prog);
 
   // stack / sp: `X[Y++] = ...`
   fnPath.traverse({
@@ -91,6 +98,23 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
           roles.localCountExpr = gen(arg.right);
         }
       }
+    }
+  }
+
+  // Newer builds (>= 8.4) do not keep a separate register array: the frame's registers and the
+  // operand stack share one array, so the prologue just aliases it (`PR = Pg`, regs = stack). The
+  // handlers still use the register name for slot access and the stack name for the operand stack,
+  // so keeping them distinct roles gives the right R[..] vs S[..] disambiguation. Guarded on the
+  // `new Array` detection above having found nothing, so older builds are unaffected.
+  if (!roles.regs && roles.stack) {
+    for (const st of prologue) {
+      if (roles.regs) break;
+      t.traverseFast(st, (n) => {
+        if (!roles.regs && t.isAssignmentExpression(n, { operator: '=' }) && t.isIdentifier(n.left) &&
+            locals.has(n.left.name) && n.left.name !== roles.stack && t.isIdentifier(n.right, { name: roles.stack })) {
+          roles.regs = n.left.name;
+        }
+      });
     }
   }
 
@@ -142,16 +166,29 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
   for (const [name, init] of locals) {
     if (t.isIdentifier(init, { name: roles.this })) roles.lexThis = name;
   }
+  // >= 8.4 captures it with a plain assignment in the prologue (`pj = PB`) rather than a declarator.
+  if (!roles.lexThis && roles.this) {
+    for (const st of prologue) {
+      if (roles.lexThis) break;
+      t.traverseFast(st, (n) => {
+        if (!roles.lexThis && t.isAssignmentExpression(n, { operator: '=' }) && t.isIdentifier(n.left) &&
+            locals.has(n.left.name) && n.left.name !== roles.this && t.isIdentifier(n.right, { name: roles.this })) {
+          roles.lexThis = n.left.name;
+        }
+      });
+    }
+  }
 
   // slot-loaded locals: code, consts, jumps, tries
   const slotLocals = [];
+  const isAnySlotRead = (node) => progParams.some((pp) => isSlotRead(node, pp));
   for (const [name, init] of locals) {
-    if (init && isSlotRead(init, roles.prog)) slotLocals.push(name);
+    if (init && isAnySlotRead(init)) slotLocals.push(name);
   }
   // also assignments inside a switch in the prologue (test1 style: the four loads are permuted)
   for (const st of prologue) {
     t.traverseFast(st, (n) => {
-      if (t.isAssignmentExpression(n, { operator: '=' }) && t.isIdentifier(n.left) && locals.has(n.left.name) && isSlotRead(n.right, roles.prog)) {
+      if (t.isAssignmentExpression(n, { operator: '=' }) && t.isIdentifier(n.left) && locals.has(n.left.name) && isAnySlotRead(n.right)) {
         if (!slotLocals.includes(n.left.name)) slotLocals.push(n.left.name);
       }
     });
@@ -172,13 +209,17 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
     const m = txt.match(new RegExp(`^${roles.pc}=(\\w+)\\[${roles.pc}\\];(?:(?:break|continue);?)?$`));
     if (m && slotLocals.includes(m[1])) { roles.jumps = m[1]; break; }
   }
-  // tries: a handler containing `X[pc]` where X is a slot local other than jumps/code, and it pushes an object literal
+  // tries: the try-enter handler reads a frame descriptor `X[i]` from a slot local (other than
+  // jumps/code) and pushes a try frame as an object literal (`.push({...})`, which an array
+  // `.push(value)` never matches). The index is the pc, but in newer builds (>= 8.4) this handler
+  // lives in a secondary dispatch where the pc is an alias, so we match any `X[ident]`, not `X[pc]`.
   for (const h of handlers) {
     if (roles.tries) break;
+    const txt = bodyText(h);
+    if (!/\.push\(\{/.test(txt)) continue;
     for (const name of slotLocals) {
       if (name === roles.jumps || name === roles.code) continue;
-      const txt = bodyText(h);
-      if (txt.includes(`${name}[${roles.pc}]`) && /\.push\(\{/.test(txt)) roles.tries = name;
+      if (new RegExp(`\\b${name}\\[\\w+\\]`).test(txt)) { roles.tries = name; break; }
     }
   }
   // consts: the remaining slot local that handlers index with the operand most often (`X[operand]`)

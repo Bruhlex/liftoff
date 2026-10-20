@@ -229,7 +229,8 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   // the obfuscator routed through the namespace object (`NS["memo"]`) are
   // rewritten back to plain identifiers afterwards.
   // lifted programs reach the namespace through its global key (differs with "Rename Globals")
-  const isNS = (n) => t.isIdentifier(n) && (n.name === nsName || (vm.nsKey && n.name === vm.nsKey));
+  const nsAliases = vm.nsAliases || new Set();
+  const isNS = (n) => t.isIdentifier(n) && (n.name === nsName || (vm.nsKey && n.name === vm.nsKey) || nsAliases.has(n.name));
   const isEntry = (n) => t.isIdentifier(n, { name: entryName });
   // a member chain on the namespace is bookkeeping unless it goes through a user binding the
   // namespace carries (`NS.vault.locked = true` is the program's own `vault.locked = true`)
@@ -247,7 +248,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   const isBoilerplate = (st) => {
     if (t.isExpressionStatement(st)) return isBoilerExpr(st.expression);
     if (t.isTryStatement(st)) return st.block.body.every(isBoilerplate) && (!st.handler || st.handler.body.body.length === 0);
-    if (t.isVariableDeclaration(st)) return st.declarations.every((d) => t.isIdentifier(d.id) && (d.id.name === nsName || d.id.name === globalName || d.id.name === entryName));
+    if (t.isVariableDeclaration(st)) return st.declarations.every((d) => t.isIdentifier(d.id) && (d.id.name === nsName || d.id.name === globalName || d.id.name === entryName || nsAliases.has(d.id.name)));
     return false;
   };
   // `NS.key = local`: the VM programs (and globalThis) know a top-level binding by its export key;

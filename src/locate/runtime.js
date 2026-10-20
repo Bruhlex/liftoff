@@ -50,6 +50,28 @@ function findNamespaceKey(ast, globalName, nsName) {
 }
 
 /**
+ * Local aliases of the namespace object. obfuscator.io computes the export target as
+ * `let X = this === G ? G : NS` (CommonJS: `this` is `module.exports` at module scope, else the
+ * VM namespace). The host then reaches the exports through `X` instead of `NS`, so the emit's
+ * namespace rewrite must recognize `X` as the namespace too. We collect every binding whose init
+ * is a conditional choosing between the global and the namespace, anywhere in the file.
+ */
+function findNamespaceAliases(ast, globalName, nsName) {
+  const aliases = new Set();
+  if (!nsName) return aliases;
+  const isGorNS = (n) => t.isIdentifier(n) && (n.name === globalName || n.name === nsName);
+  const collect = (id, init) => {
+    if (!t.isIdentifier(id) || !init || id.name === globalName || id.name === nsName) return;
+    if (t.isConditionalExpression(init) && isGorNS(init.consequent) && isGorNS(init.alternate)) aliases.add(id.name);
+  };
+  t.traverseFast(ast, (n) => {
+    if (t.isVariableDeclarator(n)) collect(n.id, n.init);
+    else if (t.isAssignmentExpression(n, { operator: '=' })) collect(n.left, n.right);
+  });
+  return aliases;
+}
+
+/**
  * The object literal returned in `block`: `return {...}`, or `var o = {...}; return o;` as builds
  * with transformObjectKeys write it.
  */
@@ -146,4 +168,4 @@ function resolveYieldTags(factoryPath, tagKey) {
   return result;
 }
 
-module.exports = { findGlobalName, findNamespaceName, findNamespaceKey, isGeneratorCopy, yieldOpcodes, resolveYieldTags };
+module.exports = { findGlobalName, findNamespaceName, findNamespaceKey, findNamespaceAliases, isGeneratorCopy, yieldOpcodes, resolveYieldTags };
