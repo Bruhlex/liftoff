@@ -163,14 +163,18 @@ function collectHandlers(fnPath, fetch) {
         operandVar = params.find((x, i) => i !== pi) || null;
       }
     }
-    for (const c of sp.node.cases) {
+    const casePaths = sp.get('cases');
+    for (let ci = 0; ci < sp.node.cases.length; ci++) {
+      const c = sp.node.cases[ci];
       if (!c.test) continue;
       let opcode = numericCaseValue(c.test);
       if (opcode === null) continue;
       if (caseToOpcode) { if (!caseToOpcode.has(opcode)) continue; opcode = caseToOpcode.get(opcode); }
       let body = c.consequent;
       if (body.length === 1 && t.isBlockStatement(body[0])) body = body[0].body;
-      handlers.push({ opcode, body, opVar, operandVar, switchNode: sp.node });
+      // casePath: a live path into the case, used later to resolve handler-local aliases of
+      // the interpreter state (newer builds bind the stack/sp/pc to fresh locals per handler).
+      handlers.push({ opcode, body, opVar, operandVar, switchNode: sp.node, casePath: casePaths[ci] });
     }
   }
   return handlers;

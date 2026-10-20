@@ -50,6 +50,8 @@ function roleMap(roles, handler, helpers) {
     else if (role.startsWith('const:')) m.set(name, role.slice(6).toUpperCase());
     else m.set(name, 'H_' + role);
   }
+  // handler-local aliases of the interpreter state (newer builds), resolved in locate.
+  if (handler.stateAliases) for (const [name, tok] of handler.stateAliases) if (!m.has(name)) m.set(name, tok);
   return m;
 }
 
