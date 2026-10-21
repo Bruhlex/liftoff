@@ -336,7 +336,23 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
     traverse.cache.clear();
     traverse(file, {
       Program(p) {
-        for (const [local, key] of exportNames) if (p.scope.hasOwnBinding(local) && !p.scope.hasBinding(key)) p.scope.rename(local, key);
+        // >= 8.4 obfuscates the export keys too (`NS._0xa588fe = Rect`): then the host binding keeps its
+        // name (it is the name the build's functions and classes carry at run time) and the lifted
+        // programs' references to the key are pointed at it instead
+        const obfKey = (k) => /^_0x[0-9a-f]{4,}$/i.test(k);
+        const keyToLocal = new Map();
+        for (const [local, key] of exportNames) {
+          if (!p.scope.hasOwnBinding(local) || p.scope.hasBinding(key)) continue;
+          if (obfKey(key)) keyToLocal.set(key, local); else p.scope.rename(local, key);
+        }
+        if (keyToLocal.size) {
+          p.traverse({
+            Identifier(q) {
+              const local = keyToLocal.get(q.node.name);
+              if (local && q.isReferencedIdentifier() && !q.scope.hasBinding(q.node.name) && q.scope.getBinding(local) === p.scope.getBinding(local)) q.node.name = local;
+            },
+          });
+        }
         p.stop();
       },
     });

@@ -178,9 +178,112 @@ function hoistDecoderArrayLoads(code) {
   return code;
 }
 
+/**
+ * Control-flow flattening without a string array. obfuscator.io >= 8.4 also flattens the VM
+ * runtime itself; webcrack (2.15) undoes control-flow flattening only inside its string-array
+ * pass, so with "Control Flow Flattening" but no "String Array" the interpreter stays hidden in
+ * `"3|1|0".split("|")` dispatchers driven by a storage object of strings and operator proxies.
+ * This mirrors webcrack's control-flow-object and control-flow-switch transforms: inline the
+ * storage object (only when every use is a read of a known key; proxies only as direct calls with
+ * matching arity) and replace each dispatcher at the start of a block by its cases in sequence.
+ * Runs only when dispatchers survived webcrack, so other inputs are untouched.
+ */
+const STORAGE_KEY = /^[a-z]{5}$/i;
+function isProxyFn(v) {
+  if (!t.isFunctionExpression(v) || v.async || v.generator || !v.params.every((p) => t.isIdentifier(p))) return false;
+  const body = v.body.body;
+  if (body.length !== 1 || !t.isReturnStatement(body[0]) || !body[0].argument) return false;
+  const e = body[0].argument, ps = v.params.map((p) => p.name);
+  const isP = (n, i) => t.isIdentifier(n, { name: ps[i] });
+  if ((t.isBinaryExpression(e) || t.isLogicalExpression(e)) && ps.length === 2) return (isP(e.left, 0) && isP(e.right, 1)) || (isP(e.left, 1) && isP(e.right, 0));
+  if (t.isCallExpression(e) && ps.length >= 1 && isP(e.callee, 0)) return e.arguments.length === ps.length - 1 && e.arguments.every((a, i) => isP(a, i + 1));
+  return false;
+}
+function inlineProxy(fn, args) {
+  const map = new Map(fn.params.map((p, i) => [p.name, args[i]]));
+  const e = t.cloneNode(fn.body.body[0].argument, true);
+  const sub = (n) => (t.isIdentifier(n) && map.has(n.name) ? map.get(n.name) : n);
+  if (t.isCallExpression(e)) { e.callee = sub(e.callee); e.arguments = e.arguments.map(sub); } else { e.left = sub(e.left); e.right = sub(e.right); }
+  return e;
+}
+function unflattenControlFlow(code) {
+  if (!/\.split\("\|"\)/.test(code)) return code;
+  let ast;
+  try { ast = parser.parse(code, { sourceType: 'script', allowReturnOutsideFunction: true }); } catch { return code; }
+  let changes = 0;
+  traverse(ast, {
+    VariableDeclarator: { exit(p) {
+      const { id, init } = p.node;
+      if (!t.isIdentifier(id) || !t.isObjectExpression(init) || !init.properties.length) return;
+      const props = new Map();
+      for (const pr of init.properties) {
+        if (!t.isObjectProperty(pr) || pr.computed) return;
+        const key = t.isIdentifier(pr.key) ? pr.key.name : t.isStringLiteral(pr.key) ? pr.key.value : null;
+        if (!key || !STORAGE_KEY.test(key) || !(t.isStringLiteral(pr.value) || isProxyFn(pr.value))) return;
+        props.set(key, pr.value);
+      }
+      const b = p.scope.getBinding(id.name);
+      if (!b || !b.constant || b.path !== p) return;
+      const uses = [];
+      for (const r of b.referencePaths) {
+        const m = r.parentPath;
+        if (!m.isMemberExpression() || m.node.object !== r.node) return;
+        const key = !m.node.computed && t.isIdentifier(m.node.property) ? m.node.property.name : t.isStringLiteral(m.node.property) ? m.node.property.value : null;
+        const v = key !== null ? props.get(key) : undefined;
+        if (!v) return;
+        const call = m.parentPath;
+        if (t.isStringLiteral(v)) {
+          if ((call.isAssignmentExpression() && call.node.left === m.node) || call.isUpdateExpression() || call.isUnaryExpression({ operator: 'delete' }) || (call.isCallExpression() && call.node.callee === m.node)) return;
+        } else if (!(call.isCallExpression() && call.node.callee === m.node && call.node.arguments.length === v.params.length && !call.node.arguments.some((a) => t.isSpreadElement(a)))) return;
+        uses.push({ m, v });
+      }
+      for (const { m, v } of uses.reverse()) {
+        if (t.isStringLiteral(v)) m.replaceWith(t.stringLiteral(v.value));
+        else m.parentPath.replaceWith(inlineProxy(v, m.parentPath.node.arguments));
+      }
+      p.remove();
+      changes++;
+    } },
+    BlockStatement: { exit(p) {
+      const body = p.node.body;
+      const [d, it, loop] = body;
+      if (!t.isVariableDeclaration(d) || d.declarations.length !== 1 || !t.isIdentifier(d.declarations[0].id)) return;
+      const init = d.declarations[0].init;
+      if (!t.isCallExpression(init) || !t.isMemberExpression(init.callee) || !t.isStringLiteral(init.callee.object) || !/^\d+(\|\d+)*$/.test(init.callee.object.value) ||
+          !(t.isIdentifier(init.callee.property, { name: 'split' }) || t.isStringLiteral(init.callee.property, { value: 'split' })) || init.arguments.length !== 1 || !t.isStringLiteral(init.arguments[0], { value: '|' })) return;
+      if (!t.isVariableDeclaration(it) || it.declarations.length !== 1 || !t.isIdentifier(it.declarations[0].id)) return;
+      const seq = d.declarations[0].id.name, idx = it.declarations[0].id.name;
+      const infinite = (t.isWhileStatement(loop) && (t.isBooleanLiteral(loop.test, { value: true }) || t.isUnaryExpression(loop.test, { operator: '!' }))) || (t.isForStatement(loop) && !loop.test);
+      if (!infinite || !t.isBlockStatement(loop.body) || loop.body.body.length !== 2 || !t.isSwitchStatement(loop.body.body[0]) || !t.isBreakStatement(loop.body.body[1]) || loop.body.body[1].label) return;
+      const sw = loop.body.body[0];
+      if (!t.isMemberExpression(sw.discriminant, { computed: true }) || !t.isIdentifier(sw.discriminant.object, { name: seq }) ||
+          !t.isUpdateExpression(sw.discriminant.property, { operator: '++' }) || !t.isIdentifier(sw.discriminant.property.argument, { name: idx })) return;
+      const cases = new Map();
+      for (const c of sw.cases) {
+        if (!t.isStringLiteral(c.test) || !/^\d+$/.test(c.test.value)) return;
+        const last = c.consequent[c.consequent.length - 1];
+        if (!(t.isContinueStatement(last) && !last.label) && !t.isReturnStatement(last)) return;
+        cases.set(c.test.value, t.isContinueStatement(last) ? c.consequent.slice(0, -1) : c.consequent);
+      }
+      const order = init.callee.object.value.split('|');
+      if (!order.every((s) => cases.has(s))) return;
+      body.splice(0, 3, ...order.flatMap((s) => cases.get(s)));
+      changes++;
+    } },
+  });
+  return changes ? generate(ast, { comments: false, jsescOption: { minimal: true } }).code : code;
+}
+
 async function normalize(code, { skipWebcrack = false, log = () => {} } = {}) {
   if (skipWebcrack) return code;
-  return inlineLiteralTemps(await runWebcrack(hoistDecoderArrayLoads(foldStringConcats(code)), log));
+  const cracked = await runWebcrack(hoistDecoderArrayLoads(foldStringConcats(code)), log);
+  let out = unflattenControlFlow(cracked);
+  // the inlined strings and proxies leave `o["key"]`, `!(a === b)` etc.: let webcrack's syntactic
+  // passes bring them into the same normal form as the rest of the file
+  if (out !== cracked) {
+    try { out = (await webcrack(out, { jsx: false, unpack: false, unminify: true, deobfuscate: false, mangle: false })).code; } catch (e) { log(`webcrack unminify after control-flow unflattening failed (${e.message})`); }
+  }
+  return inlineLiteralTemps(out);
 }
 
 const WEBCRACK_OPTS = {
