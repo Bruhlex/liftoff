@@ -192,13 +192,14 @@ function extractPrograms(vm, table, { log = () => {}, sandbox = null } = {}) {
         r.fnKind = functionKind(fn);
         // an unnamed program's closure shows the name of the builder's own wrapper function
         // (`{ 'vjRMKk'() {...} }['vjRMKk']`); such names occur in the VM runtime's source text
-        if (r.fnKind.name && runtimeNames(vm).has(r.fnKind.name)) r.fnKind.name = null;
+        // (>= 8.4 builds the wrapper with a computed key, so this cannot happen there)
+        if (!roles.resumeFrame && r.fnKind.name && runtimeNames(vm).has(r.fnKind.name)) r.fnKind.name = null;
         // >= 8.4 gives every closure the name the source would infer (`const f = function () {}`
         // has f.name === 'f'); that is not the function's own binding, so it must not name it
-        if (roles.resumeFrame && r.fnKind.name) { r.fnKind.inferredName = r.fnKind.name; r.fnKind.name = null; }
+        if (roles.resumeFrame && typeof r.fnKind.name === 'string') { r.fnKind.inferredName = r.fnKind.name; r.fnKind.name = null; }
         // ... and builds every closure as the same non-constructible wrapper: take the kind from the flags
         const flags = roles.resumeFrame ? closureFlagsViaStep(X, table, programs[0].obj, r.obj) : null;
-        if (flags) Object.assign(r.fnKind, { kind: flags.arrow && !flags.generator ? 'arrow' : 'function', async: flags.async, generator: flags.generator });
+        if (flags) Object.assign(r.fnKind, { kind: flags.arrow && !flags.generator ? 'arrow' : flags.method ? 'method' : 'function', async: flags.async, generator: flags.generator });
       } catch (e) {
         log(`program ${r.id}: makeClosure probe failed: ${e.message}`);
       }

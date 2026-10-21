@@ -326,7 +326,7 @@ const RULES = [
   // Lazily built `arguments` object (a Proxy carrying length/callee/iterator).
   [(s) => /"callee"/.test(s) && /new Proxy\(/.test(s) && /^if\(v0===null\)\{/.test(s) && /S\[SP\+\+\]=v0;PC\+\+;$/.test(s) && 'PUSH_ARGUMENTS'],
   // `this` in a derived constructor, resolved from the scope once super() has run.
-  [(s) => /^if\(v\d&&!v\d\)\{let v\d=v\d\(SC\);if\(v\d!==undefined\)\{THIS=v\d;v\d=true;\}else\{throw new ReferenceError\("Must call super constructor/.test(s) && /\}S\[SP\+\+\]=THIS;PC\+\+;$/.test(s) && 'PUSH_THIS'],
+  [(s) => /^if\(v\d&&!v\d\)\{let v\d=v\d\(SC\);if\(v\d!==undefined\)\{THIS=v\d;v\d=true;\}else\{throw new ReferenceError\("Must call super constructor/.test(s) && /\}S\[SP\+\+\]=THIS;PC\+\+;$/.test(s) && { mnemonic: 'PUSH_THIS', checksInit: true }],
   // Store into the arguments array (copied to a real array first if needed).
   [(s) => /^if\(v0===null&&\(v1\|\|!v2\)&&ARGS\)\{v0=v3\(ARGS\);\}if\(ARGS&&OP>=ARGS\.length&&!Array_isArray\(ARGS\)\)\{ARGS=v3\(ARGS\);\}ARGS\[OP\]=S\[--SP\];PC\+\+;$/.test(s) && 'STORE_ARG'],
   // Methods with a computed key, an optional inserted `name` (OP&1) and private brand (OP&2):

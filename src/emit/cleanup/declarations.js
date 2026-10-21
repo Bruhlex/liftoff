@@ -7,7 +7,7 @@
 
 const t = require('@babel/types');
 const traverse = require('@babel/traverse').default;
-const { removeDeclarator, countIdent: countRefs } = require('../../ast');
+const { removeDeclarator, countIdent: countRefs, isIdentName, isUndef } = require('../../ast');
 const { argumentsToParams, leadingBareLets, defaultCheck, readsBodyBinding, convertDefaultParams, mergeParamCopy } = require('../params');
 const { restoreKeyedDestructuring, destructuredParams, objectParams } = require('../patterns');
 const { rewriteBindings, assignsOwnName } = require('./bindings');
@@ -33,6 +33,98 @@ function nameFunctionHolders(file) {
       }
     },
   });
+}
+
+/**
+ * >= 8.4 gives every closure the name the source infers for it (`const arrow = () => {}`,
+ * `const { arrow = () => {} } = o`), and a register holding it has only a synthetic name. When such a
+ * register is declared with the closure as its value, or as the default of a property read
+ * (`o.k === undefined ? f : o.k`), the register gets the closure's name; the default read becomes a
+ * destructuring default again when its source is side-effect free, which is where JavaScript infers
+ * that name.
+ */
+function nameRegistersByClosure(file) {
+  const isClosure = (n) => (t.isFunctionExpression(n) || t.isArrowFunctionExpression(n) || t.isClassExpression(n)) && typeof n.__inferredName === 'string';
+  const pure = (e) => t.isIdentifier(e) || t.isLiteral(e) && !t.isTemplateLiteral(e) || (t.isObjectExpression(e) && !e.properties.length) || (t.isArrayExpression(e) && !e.elements.length);
+  const keyOf = (m) => (t.isMemberExpression(m) && !m.computed && t.isIdentifier(m.property) ? m.property.name : t.isMemberExpression(m) && m.computed && t.isStringLiteral(m.property) ? m.property.value : null);
+  const synthetic = (id) => t.isIdentifier(id) && /^(r\d+|s\d+_\d+)_*$/.test(id.name);
+  // the closure a binding receives at `node` (a value, or the default of a property read)
+  const closureIn = (v) => {
+    if (isClosure(v)) return v;
+    if (t.isConditionalExpression(v) && t.isBinaryExpression(v.test, { operator: '===' }) && isUndef(v.test.right) && isClosure(v.consequent)) return v.consequent;
+    return null;
+  };
+  // rename the binding of `id` (seen at path p) to the closure's name, if every closure it ever
+  // receives carries that same name (registers are reused) and nothing in scope shadows it
+  const rename = (p, id, fn) => {
+    const name = fn.__inferredName;
+    const b = p.scope.getBinding(id.name);
+    if (!isIdentName(name) || !b || b.scope.hasBinding(name) || b.referencePaths.some((r) => r.scope.hasBinding(name))) return false;
+    // a function or class with its own name: that name is not one the binding gave it
+    if ((t.isFunctionExpression(fn) || t.isClassExpression(fn)) && fn.id) return false;
+    const values = [b.path.isVariableDeclarator() ? b.path.node.init : null, ...b.constantViolations.map((v) => (v.isAssignmentExpression() ? v.node.right : null))];
+    if (values.some((v) => { const c = v && closureIn(v); return c && c.__inferredName !== name; })) return false;
+    b.scope.rename(id.name, name);
+    return true;
+  };
+  traverse.cache.clear();
+  traverse(file, {
+    VariableDeclarator(p) {
+      const n = p.node;
+      if (!synthetic(n.id) || !n.init) return;
+      const fn = closureIn(n.init);
+      if (!fn) return;
+      let deflt = null;
+      if (fn !== n.init) {
+        const a = n.init.test.left, b = n.init.alternate;
+        const k = keyOf(a);
+        if (!(k && keyOf(b) === k && t.isNodesEquivalent(a, b))) return;
+        if (pure(a.object)) deflt = { k, src: a.object };
+      }
+      if (!rename(p, n.id, fn)) return;
+      const name = fn.__inferredName;
+      if (deflt && p.parentPath.isVariableDeclaration() && p.parentPath.node.kind !== 'var') {
+        const key = isIdentName(deflt.k) ? t.identifier(deflt.k) : t.stringLiteral(deflt.k);
+        p.node.id = t.objectPattern([t.objectProperty(key, t.assignmentPattern(t.identifier(name), fn), false, deflt.k === name)]);
+        p.node.init = deflt.src;
+      }
+    },
+    // `r = f` (a register assigned later), and `{ k: r = f }` / `[r = f]` / `(r = f) =>` defaults
+    AssignmentExpression(p) {
+      // (only a closure itself: a default read is renamed once it has become a declaration, which
+      // then restores the destructuring as well)
+      if (p.node.operator === '=' && synthetic(p.node.left) && isClosure(p.node.right)) rename(p, p.node.left, p.node.right);
+    },
+    AssignmentPattern(p) {
+      if (synthetic(p.node.left) && isClosure(p.node.right)) rename(p, p.node.left, p.node.right);
+    },
+  });
+}
+
+/**
+ * >= 8.4: where JavaScript infers a function's name from its position (`x = f`, `{ k: f }`,
+ * `k = f` in a class, a default `x = f`), a closure whose run-time name differs (the source had
+ * `x = (0, function () {})`, or the binding was renamed) is written `(0, f)`, which infers nothing.
+ * Run once, after all other renames.
+ */
+function keepRuntimeNames(file) {
+  let changed = 0;
+  const anon = (n) => (t.isArrowFunctionExpression(n) || ((t.isFunctionExpression(n) || t.isClassExpression(n)) && !n.id)) && typeof n.__inferredName === 'string';
+  const check = (holder, key, name) => {
+    const v = holder[key];
+    if (!anon(v) || name === null || v.__inferredName === name) return;
+    holder[key] = t.sequenceExpression([t.numericLiteral(0), v]);
+    changed++;
+  };
+  const keyName = (n) => (n.computed ? null : t.isIdentifier(n.key) ? n.key.name : t.isStringLiteral(n.key) ? n.key.value : t.isPrivateName(n.key) ? '#' + n.key.id.name : null);
+  t.traverseFast(file, (n) => {
+    if (t.isVariableDeclarator(n) && t.isIdentifier(n.id) && n.init) check(n, 'init', n.id.name);
+    else if (t.isAssignmentExpression(n, { operator: '=' }) && t.isIdentifier(n.left)) check(n, 'right', n.left.name);
+    else if (t.isAssignmentPattern(n) && t.isIdentifier(n.left)) check(n, 'right', n.left.name);
+    else if (t.isObjectProperty(n) && !n.shorthand) check(n, 'value', keyName(n));
+    else if ((t.isClassProperty(n) || t.isClassPrivateProperty(n)) && n.value) check(n, 'value', keyName(n));
+  });
+  return changed;
 }
 
 /** block-level statement rewrites (manual mutation, no scope info needed) */
@@ -175,4 +267,4 @@ function mergeLetDeclarations(body) {
   }
 }
 
-module.exports = { nameFunctionHolders, rewriteBlocks, rewriteParams, restorePatternParams, forOfPatterns, dropUnusedLets };
+module.exports = { nameFunctionHolders, nameRegistersByClosure, keepRuntimeNames, rewriteBlocks, rewriteParams, restorePatternParams, forOfPatterns, dropUnusedLets };

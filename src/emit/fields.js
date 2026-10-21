@@ -98,6 +98,18 @@ function foldDerivedFieldInitializers(file) {
       const setters = new Map(); // arrow name -> private name
       const fields = [];
       const brandKeys = []; // `const k = "__vmwm__$pib_N"` naming the brand slot
+      // `(x) => { <brand>; return this.#f = x; }`: the private name it initializes, or null
+      const setterOf = (a) => {
+        if (!t.isArrowFunctionExpression(a) || a.params.length !== 1 || !t.isIdentifier(a.params[0])) return null;
+        const p = a.params[0].name;
+        const ret = t.isBlockStatement(a.body) ? a.body.body : [t.returnStatement(a.body)];
+        if (!ret.slice(0, -1).every(isBrand)) return null;
+        const last = ret[ret.length - 1];
+        const e = t.isReturnStatement(last) ? last.argument : null;
+        if (!e || !t.isAssignmentExpression(e, { operator: '=' }) || !t.isMemberExpression(e.left) || !t.isThisExpression(e.left.object) ||
+            !t.isPrivateName(e.left.property) || !t.isIdentifier(e.right, { name: p })) return null;
+        return e.left.property.id.name;
+      };
       for (const st of fn.body.body) {
         if (isBrand(st)) continue;
         // `let set;` declared ahead of its assignment
@@ -108,17 +120,19 @@ function foldDerivedFieldInitializers(file) {
           : t.isExpressionStatement(st) && t.isAssignmentExpression(st.expression, { operator: '=' }) && t.isIdentifier(st.expression.left) && t.isArrowFunctionExpression(st.expression.right)
             ? { name: st.expression.left.name, a: st.expression.right } : null;
         if (setterDecl) {
-          const a = setterDecl.a;
-          if (a.params.length !== 1 || !t.isIdentifier(a.params[0])) return;
-          const p = a.params[0].name;
-          const ret = t.isBlockStatement(a.body) ? a.body.body : [t.returnStatement(a.body)];
-          if (!ret.slice(0, -1).every(isBrand)) return;
-          const last = ret[ret.length - 1];
-          const e = t.isReturnStatement(last) ? last.argument : null;
-          if (!e || !t.isAssignmentExpression(e, { operator: '=' }) || !t.isMemberExpression(e.left) || !t.isThisExpression(e.left.object) ||
-              !t.isPrivateName(e.left.property) || !t.isIdentifier(e.right, { name: p })) return;
-          setters.set(setterDecl.name, e.left.property.id.name);
+          const priv = setterOf(setterDecl.a);
+          if (!priv) return;
+          setters.set(setterDecl.name, priv);
           continue;
+        }
+        // >= 8.4 calls the setter right away: `((x) => { <brand>; return this.#f = x; })(v)`
+        if (t.isExpressionStatement(st) && t.isCallExpression(st.expression) && st.expression.arguments.length === 1 && !t.isSpreadElement(st.expression.arguments[0])) {
+          const priv = setterOf(st.expression.callee);
+          if (priv) {
+            const v = st.expression.arguments[0];
+            fields.push(t.classPrivateProperty(t.privateName(t.identifier(priv)), isUndef(v) ? null : v));
+            continue;
+          }
         }
         // set(v)
         if (t.isExpressionStatement(st) && t.isCallExpression(st.expression) && t.isIdentifier(st.expression.callee) && setters.has(st.expression.callee.name) && st.expression.arguments.length === 1) {

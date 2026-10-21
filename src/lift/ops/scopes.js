@@ -70,7 +70,7 @@ const ops = {
     // a named function expression refers to itself through this slot; the name comes from
     // the prologue, else from the closure builder, else a synthetic one
     const p = state.prog;
-    const fk = p.fnKind && p.fnKind.name;
+    const fk = p.fnKind && (p.fnKind.name || p.fnKind.inferredName);
     const name = p.name && isIdentName(p.name) ? p.name : fk && isIdentName(fk) ? fk : fresh(`fn${p.id}`);
     if (!p.name) p.selfName = name;
     frame.names.set(operand, name);

@@ -118,7 +118,7 @@ is compared with its source `samples/http-client.src.js` instead.
 | `corpus/builds/` | 120 builds of 83 programs (obfuscator.io 8.0.6, eight option sets: VM only, + string array, + control-flow flattening, + expression obfuscation, all, raw, Node target) | all 120 behave like the build; two carry a documented one-line difference (`corpus/expected-divergence.json`) |
 | `samples/v840_vmlow/` | 11 builds of 11 programs (obfuscator.io 8.4.0, VM Low, Node target): `node test/corpus.js samples/v840_vmlow` | all 11 behave like the build |
 | `samples/v840_options/` | 28 builds of 4 programs (obfuscator.io 8.4.0, VM Low, seven option sets: VM only, + string array, + control-flow flattening, + expression obfuscation, all, raw, Node target) | all 28 behave like the build |
-| test262 (not in the repository) | 9,512 language tests of [test262](https://github.com/tc39/test262) in 17 builds (obfuscator.io 8.0.8, VM with and without string array / split strings / numbers to expressions / transform keys) | all 8,824 tests the build itself passes give the same result after decompiling (the other 688 fail in the obfuscated build already) |
+| test262 (harness in `tools/test262/`, builds not in the repository) | 9,512 language tests of [test262](https://github.com/tc39/test262) in 17 builds each, VM with and without string array / split strings / numbers to expressions / transform keys: obfuscator.io 8.0.8 and 8.4.0 | 8.0.8: all 8,824 tests the build itself passes give the same result after decompiling (the other 688 fail in the obfuscated build already); 8.4.0: all 8,953 (the other 559 fail in the build) |
 
 ## Layout
 

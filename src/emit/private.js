@@ -235,6 +235,7 @@ function restorePrivateMembers(file, privateSymbols) {
           const pm = t.classPrivateMethod(m.kind, t.privateName(t.identifier(symName(m.key.name))), m.params, m.body, m.static);
           pm.async = !!m.async;
           pm.generator = !!m.generator;
+          if (m.__inferredName) pm.__inferredName = m.__inferredName;
           out.push(pm);
           continue;
         }
@@ -251,6 +252,7 @@ function restorePrivateMembers(file, privateSymbols) {
         out.push(m);
       }
       p.node.body = out;
+
     },
     // `delete this.__vmwm__...;` in constructors
     ExpressionStatement(p) {
@@ -265,4 +267,30 @@ function restorePrivateMembers(file, privateSymbols) {
   };
 }
 
-module.exports = { restorePrivateMembers };
+/**
+ * >= 8.4: a private method (or a function in a private field) carries its source name at run time
+ * (`#method`); use it instead of the generic `#method_N` when it is unique in the class. Runs after
+ * the field initializers have been folded into the classes, so every reference is in the class body.
+ */
+function renamePrivateByRuntimeName(file) {
+  // the generated names (#method_N, #field_N) are unique in the file, so their references can be
+  // renamed everywhere (a computed key may still sit in a temporary before the class)
+  const rename = new Map();
+  t.traverseFast(file, (n) => {
+    if (!t.isClassBody(n)) return;
+    const members = n.body.filter((m) => t.isClassPrivateMethod(m) || t.isClassPrivateProperty(m));
+    const names = new Set(members.map((m) => m.key.id.name));
+    const local = new Map();
+    for (const m of members) {
+      const inf = m.__inferredName || (m.value && m.value.__inferredName);
+      const want = typeof inf === 'string' && /^#[A-Za-z_$][\w$]*$/.test(inf) ? inf.slice(1) : null;
+      const cur = m.key.id.name;
+      if (!want || want === cur || local.has(cur) || names.has(want) || [...local.values()].includes(want)) continue;
+      local.set(cur, want);
+    }
+    for (const [k, v] of local) rename.set(k, v);
+  });
+  if (rename.size) t.traverseFast(file, (x) => { if (t.isPrivateName(x) && rename.has(x.id.name)) x.id.name = rename.get(x.id.name); });
+}
+
+module.exports = { renamePrivateByRuntimeName, restorePrivateMembers };

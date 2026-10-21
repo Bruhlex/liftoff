@@ -23,10 +23,12 @@ const ops = {
     if (c && c.t === 'program') { const n = t.identifier(`__program_${c.id}`); n.__programRef = c.id; push(n); return; }
     push(constAt(operand));
   },
-  PUSH_THIS({ state, m, pc, push }) {
+  PUSH_THIS({ state, m, e, pc, push }) {
     if (state.skipPushThis === pc) { state.skipPushThis = null; return; } // the value of `super(...)`, already on the stack
     const th = t.thisExpression();
     if (m === 'PUSH_LEXICAL_THIS') th.__lexical = true;
+    // (>= 8.4: the handler itself checks that `this` is initialized, whatever the derived flag says)
+    if (e && e.checksInit) th.__checksInit = true;
     // after super(...) has run, a `this` is its value (or the initialized `this`), no check
     if (state.firstSuperCall >= 0 && state.firstSuperCall < pc) th.__superResult = true;
     push(th);
@@ -49,7 +51,7 @@ const ops = {
     // in a derived constructor a dropped `this` is the check that `this` is initialized
     // (`super[super()]` reads `this` before calling super)
     // (an arrow's dropped `this` is the source's `this;`, which throws before super() too)
-    if (t.isThisExpression(v) && !v.__superResult && (state.prog.derived || v.__lexical) && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.thisExpression())); return; }
+    if (t.isThisExpression(v) && !v.__superResult && (state.prog.derived || v.__lexical || v.__checksInit) && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.thisExpression())); return; }
     if (v && v.__coercible && !stack.includes(v)) { this.emitStatement(state, stack, emit, t.expressionStatement(t.assignmentExpression('=', t.objectPattern([]), v))); return; }
     if (!stack.includes(v) && !(state.alive && state.alive.has(v)) && !isDroppable(v)) this.emitStatement(state, stack, emit, t.expressionStatement(v));
   },

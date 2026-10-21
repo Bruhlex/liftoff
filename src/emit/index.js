@@ -21,9 +21,10 @@ const generate = require('@babel/generator').default;
 const { renameSynthetic } = require('../naming');
 const { Lifter, Frame } = require('../lift');
 const { gen, isIdentName, referencesName, staticKey, iife, replaceWhere, isArgumentsSlice, hasOwnArguments, containsOwn, containsReturn, referencesThisOrArgs } = require('../ast');
-const { restorePrivateMembers } = require('./private');
+const { restorePrivateMembers, renamePrivateByRuntimeName } = require('./private');
 const { foldDerivedFieldInitializers, inlinePrivateComputedKeys } = require('./fields');
 const { stripIllegalStrict, stripRedundantStrict, cleanup } = require('./cleanup');
+const { keepRuntimeNames } = require('./cleanup/declarations');
 
 // output: comments kept, strings with minimal escaping
 const GEN_OPTS = { comments: true, compact: false, jsescOption: { minimal: true } };
@@ -359,6 +360,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   }
   const privateLeft = restorePrivateMembers(file, privateSymbols);
   foldDerivedFieldInitializers(file);
+  renamePrivateByRuntimeName(file);
   // leftovers that still reference the lowering (reported, not guessed), counted after the
   // initializer functions that use the WeakMaps are folded into the classes
   const left = privateLeft ? privateLeft() : 0;
@@ -378,6 +380,7 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
   }
   // readable names for synthetic identifiers (cosmetic, last)
   if (prettyNames && !process.env.VMDEC_NONAMES && renameSynthetic(file)) code = generate(file, GEN_OPTS).code;
+  if (keepRuntimeNames(file)) code = generate(file, GEN_OPTS).code;
   log(`${replaced} host call site(s) replaced, ${unreferenced.length} unreferenced program(s)`);
   return { code, replaced };
 }

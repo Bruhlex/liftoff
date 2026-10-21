@@ -192,6 +192,7 @@ defineProp(state, stack, emit, obj, key, value, opts) {
       if (fn) {
         const kind = opts.accessor || 'method';
         const meth = t.classMethod(kind, pk.key, fn.params, fn.body, pk.computed, isStatic, fn.generator, fn.async);
+        if (typeof fn.__inferredName === 'string') meth.__inferredName = fn.__inferredName;
         obj.body.body.push(meth);
       } else if (value.__staticInit && obj.body.body.includes(value.__staticInit)) {
         // `static x = <expr>` compiles to a thunk run with the class as `this`: the field takes
@@ -226,6 +227,8 @@ makeClosure(state, desc) {
     const lifted = this.liftProgram(prog, { parentChain: this.chainAt(state) });
     const fn = this.buildFunction(prog, lifted);
     if (this.isBrandCheckProgram(prog) || isKeyHelper(fn)) fn.__brandHelper = true;
+    // >= 8.4: the name the VM gives the closure (the binding it was written for), see nameRegistersByClosure
+    if (prog.fnKind && typeof prog.fnKind.inferredName === 'string') fn.__inferredName = prog.fnKind.inferredName;
     return fn;
   },
 

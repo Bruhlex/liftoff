@@ -8,7 +8,7 @@
 
 const t = require('@babel/types');
 const { rewriteExpressions, arrowExpressionBodies } = require('./expressions');
-const { nameFunctionHolders, rewriteBlocks, rewriteParams, restorePatternParams, forOfPatterns, dropUnusedLets } = require('./declarations');
+const { nameFunctionHolders, nameRegistersByClosure, rewriteBlocks, rewriteParams, restorePatternParams, forOfPatterns, dropUnusedLets } = require('./declarations');
 const { rewriteBindings, propagateTempBinding, functionHolderBinding } = require('./bindings');
 const { loopCleanup } = require('./loops');
 
@@ -50,6 +50,7 @@ function cleanup(file) {
   if (process.env.VMDEC_NOCLEANUP) return;
   rewriteExpressions(file);
   nameFunctionHolders(file);
+  nameRegistersByClosure(file);
   rewriteBlocks(file);
   rewriteParams(file);
   rewriteBindings(file, propagateTempBinding); // single-assignment temporaries holding constant expressions

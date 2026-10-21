@@ -89,8 +89,19 @@ function buildClosureFlagsStep(vm) {
     if (i < 0) continue;
     const chain = h.body[i];
     const A = chain.test.name, B = chain.alternate.test.name, C = chain.alternate.alternate.test.name;
+    // the plain builder alone takes one more flag, which drops `prototype` (a method, not
+    // constructible): the identifier argument of the last builder call that no other builder gets
+    // and that is one of the handler's flag locals (`let f;`, assigned from the program)
+    const flagLocals = new Set();
+    for (const st of h.body) if (t.isVariableDeclaration(st)) for (const d of st.declarations) if (t.isIdentifier(d.id) && !d.init) flagLocals.add(d.id.name);
+    const callArgs = (node) => { const out = new Set(); t.traverseFast(node, (n) => { if (t.isCallExpression(n)) for (const a of n.arguments) if (t.isIdentifier(a)) out.add(a.name); }); return out; };
+    const last = callArgs(chain.alternate.alternate.alternate);
+    const others = callArgs(t.ifStatement(chain.test, chain.consequent, t.ifStatement(chain.alternate.test, chain.alternate.consequent, chain.alternate.alternate.consequent)));
+    const D = [...last].find((n) => flagLocals.has(n) && !others.has(n) && n !== A && n !== B && n !== C) || null;
+    const pairs = [['generator', A], ['async', B], ['arrow', C]];
+    if (D) pairs.push(['method', D]);
     const rec = t.expressionStatement(t.assignmentExpression('=', t.memberExpression(t.identifier('__P'), t.identifier('flags')),
-      t.objectExpression([['generator', A], ['async', B], ['arrow', C]].map(([k, v]) => t.objectProperty(t.identifier(k), t.unaryExpression('!', t.unaryExpression('!', t.identifier(v))))))));
+      t.objectExpression(pairs.map(([k, v]) => t.objectProperty(t.identifier(k), t.unaryExpression('!', t.unaryExpression('!', t.identifier(v))))))));
     h.body[i] = rec;
     try { return buildStepFunction(vm); } finally { h.body[i] = chain; }
   }
