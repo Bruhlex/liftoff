@@ -1,0 +1,72 @@
+[
+ {
+  "name": "v8_v840_ex_array_operations",
+  "ok": true,
+  "decMs": 2521,
+  "opcodes": 94,
+  "inferred": null,
+  "warnings": 0,
+  "programs": 3,
+  "unrefd": 0,
+  "match": true,
+  "lines": 3,
+  "decBytes": 438,
+  "vmLeft": 0
+ },
+ {
+  "name": "v8_v840_ex_fibonacci",
+  "ok": true,
+  "decMs": 2549,
+  "opcodes": 105,
+  "inferred": null,
+  "warnings": 0,
+  "programs": 2,
+  "unrefd": 0,
+  "match": true,
+  "lines": 10,
+  "decBytes": 397,
+  "vmLeft": 0
+ },
+ {
+  "name": "v8_v840_ex_hello_world",
+  "ok": true,
+  "decMs": 2452,
+  "opcodes": 94,
+  "inferred": null,
+  "warnings": 0,
+  "programs": 2,
+  "unrefd": 0,
+  "match": true,
+  "lines": 1,
+  "decBytes": 295,
+  "vmLeft": 0
+ },
+ {
+  "name": "v8_v840_ex_simple_calculator",
+  "ok": true,
+  "decMs": 2479,
+  "opcodes": 94,
+  "inferred": null,
+  "warnings": 0,
+  "programs": 5,
+  "unrefd": 0,
+  "match": true,
+  "lines": 4,
+  "decBytes": 630,
+  "vmLeft": 0
+ },
+ {
+  "name": "v8_v840_ex_string_utilities",
+  "ok": true,
+  "decMs": 2494,
+  "opcodes": 105,
+  "inferred": null,
+  "warnings": 0,
+  "programs": 4,
+  "unrefd": 0,
+  "match": true,
+  "lines": 4,
+  "decBytes": 541,
+  "vmLeft": 0
+ }
+]

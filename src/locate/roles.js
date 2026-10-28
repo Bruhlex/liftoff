@@ -287,6 +287,36 @@ function inferRoles(fnPath, loop, fetch, handlers, globalName) {
       break;
     }
   }
+  // a program without try/catch gets no push handler, but the unwinding jumps still walk the frames:
+  // `while (X && X.length > 0) { let f = X[X.length - 1]; if (f.FIN !== undefined || !(t >= f.END) && ...) break; X.pop(); }`
+  if (!roles.tryFrames) {
+    const keyOf = (m) => (t.isIdentifier(m.property) && !m.computed ? m.property.name : t.isStringLiteral(m.property) ? m.property.value : null);
+    for (const h of handlers) {
+      if (roles.tryFrames) break;
+      for (const st of h.body) t.traverseFast(st, (n) => {
+        if (roles.tryFrames || !t.isWhileStatement(n) || !t.isLogicalExpression(n.test, { operator: '&&' }) ||
+            !t.isIdentifier(n.test.left) || !locals.has(n.test.left.name) || !t.isBlockStatement(n.body)) return;
+        const X = n.test.left.name;
+        const [decl, test] = n.body.body;
+        if (!t.isVariableDeclaration(decl) || decl.declarations.length !== 1 || !t.isIdentifier(decl.declarations[0].id) || !t.isIfStatement(test)) return;
+        const init = decl.declarations[0].init;
+        if (!t.isMemberExpression(init, { computed: true }) || !t.isIdentifier(init.object, { name: X })) return;
+        if (!n.body.body.some((s) => gen(s) === `${X}.pop();`)) return;
+        const f = decl.declarations[0].id.name;
+        const or = test.test;
+        if (!t.isLogicalExpression(or, { operator: '||' }) || !t.isBinaryExpression(or.left, { operator: '!==' }) ||
+            !t.isMemberExpression(or.left.left) || !t.isIdentifier(or.left.left.object, { name: f }) || !t.isIdentifier(or.left.right, { name: 'undefined' })) return;
+        let end = null;
+        t.traverseFast(or.right, (m) => {
+          if (!end && t.isBinaryExpression(m, { operator: '>=' }) && t.isMemberExpression(m.right) && t.isIdentifier(m.right.object, { name: f })) end = keyOf(m.right);
+        });
+        const fin = keyOf(or.left.left);
+        if (!end || !fin) return;
+        roles.tryFrames = X;
+        roles.tryFrameProps = { finallyPc: fin, endPc: end };
+      });
+    }
+  }
 
   // flags: `let X = !!prog[...]`
   const flagLocals = [];

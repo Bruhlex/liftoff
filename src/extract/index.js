@@ -157,7 +157,7 @@ function extractPrograms(vm, table, { log = () => {}, sandbox = null } = {}) {
     let paramCount = 0;
     while (paramCount < regs.length && regs[paramCount] && regs[paramCount].__sentinel) paramCount++;
     const scope = st[roles.scope];
-    const scopeSlots = scope && scope[roles.scopeProps.slots] ? scope[roles.scopeProps.slots].length : 0;
+    const scopeSlots = scope && roles.scopeProps && scope[roles.scopeProps.slots] ? scope[roles.scopeProps.slots].length : 0;
     // constants (register nested program objects found in the pool)
     const rawConsts = st[roles.consts] || [];
     for (let k = 0; k < rawConsts.length; k++) if (isProgramObject(rawConsts[k])) addProgram(rawConsts[k], 'const', k);

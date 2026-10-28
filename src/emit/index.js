@@ -43,12 +43,13 @@ function factoryTopStatement(vm) {
 /** Map the arguments of one entry call to roles by shape. */
 function classifyEntryArgs(call, ex, vm) {
   const roles = { programIndex: null, args: null, scope: null, hasThis: false, newTarget: false, callee: null };
-  const slotsKey = vm.roles.scopeProps.slots;
+  // a build whose programs never create a scope (e.g. one function without closures) has no scope object
+  const slotsKey = vm.roles.scopeProps && vm.roles.scopeProps.slots;
   call.arguments.forEach((a, i) => {
     if (i === ex.entryProgramParam && (t.isNumericLiteral(a))) { roles.programIndex = a.value; return; }
     if (t.isIdentifier(a, { name: 'arguments' })) roles.args = a;
     else if (t.isArrayExpression(a)) roles.args = a;
-    else if (t.isObjectExpression(a) && a.properties.some((p) => t.isObjectProperty(p) && (t.isIdentifier(p.key, { name: slotsKey }) || t.isStringLiteral(p.key, { value: slotsKey })))) roles.scope = a;
+    else if (slotsKey && t.isObjectExpression(a) && a.properties.some((p) => t.isObjectProperty(p) && (t.isIdentifier(p.key, { name: slotsKey }) || t.isStringLiteral(p.key, { value: slotsKey })))) roles.scope = a;
     else if (t.isThisExpression(a)) roles.hasThis = true;
     else if (t.isMetaProperty(a)) roles.newTarget = true;
     else if (t.isConditionalExpression(a) && t.isUnaryExpression(a.test.left, { operator: 'typeof' })) roles.callee = a.test.left.argument;
@@ -63,7 +64,7 @@ function classifyEntryArgs(call, ex, vm) {
 
 /** Build an external Frame from a host scope object literal. */
 function frameFromScopeLiteral(obj, vm, lifter, warn) {
-  const slotsKey = vm.roles.scopeProps.slots;
+  const slotsKey = vm.roles.scopeProps && vm.roles.scopeProps.slots;
   const frame = new Frame(lifter.frameCounter++, { external: true });
   const prop = obj.properties.find((p) => t.isObjectProperty(p) && (t.isIdentifier(p.key, { name: slotsKey }) || t.isStringLiteral(p.key, { value: slotsKey })));
   if (!prop) return frame;
@@ -247,11 +248,18 @@ function assemble(vm, ex, table, { log = () => {}, warn = () => {}, prettyNames 
     if (t.isCallExpression(e) && t.isMemberExpression(e.callee) && t.isIdentifier(e.callee.object, { name: 'Object' }) && t.isIdentifier(e.callee.property, { name: 'defineProperty' }) && isNS(e.arguments[0])) return true;
     if (t.isCallExpression(e) && t.isMemberExpression(e.callee) && isEntry(e.callee.object)) return true; // registration: ENTRY._$x(fn, idx)
     if (t.isIdentifier(e)) return true; // bare `console;` probes inside the global-shim try blocks
+    if (t.isStringLiteral(e) || t.isNumericLiteral(e)) return true; // leftover `"0";` of a split export sequence (>= 8.4)
     return false;
   };
+  // the global shim's descriptor in its own declaration (small builds):
+  // `try { console; var d = { get, set, configurable }; Object.defineProperty(NS, "console", d); } catch (e) {}`
+  const isShimDescriptor = (st, block) => t.isVariableDeclaration(st) && st.declarations.length === 1 && t.isIdentifier(st.declarations[0].id) &&
+    t.isObjectExpression(st.declarations[0].init) &&
+    block.some((s) => t.isExpressionStatement(s) && t.isCallExpression(s.expression) && isBoilerExpr(s.expression) && isNS(s.expression.arguments[0]) &&
+      t.isIdentifier(s.expression.arguments[2], { name: st.declarations[0].id.name }));
   const isBoilerplate = (st) => {
     if (t.isExpressionStatement(st)) return isBoilerExpr(st.expression);
-    if (t.isTryStatement(st)) return st.block.body.every(isBoilerplate) && (!st.handler || st.handler.body.body.length === 0);
+    if (t.isTryStatement(st)) return st.block.body.every((s) => isBoilerplate(s) || isShimDescriptor(s, st.block.body)) && (!st.handler || st.handler.body.body.length === 0);
     // >= 8.4 hides the namespace exports in `var {} = (NS.x = x, 0)`; once webcrack splits the
     // sequence off, `var {} = 0` is left, a no-op for any non-nullish literal
     if (t.isVariableDeclaration(st) && st.declarations.every((d) => t.isObjectPattern(d.id) && !d.id.properties.length &&

@@ -34,7 +34,8 @@ The VM mode of obfuscator.io's hosted service, **free tier** of the dashboard
   keys, raw output and the Browser or Node target;
 * **version 8.4.0**, preset *VM Low*, alone and combined with the same options, Browser or
   Node target (`samples/v840_vmlow/`: 11 programs with the preset's defaults; `samples/v840_options/`:
-  4 programs in all seven option sets). 8.4.0 changed the frame layout, dispatch and closure
+  4 programs in all seven option sets; `samples/v840_examples/`: the dashboard's five built-in
+  examples, whose small interpreters lack the scope and try handlers). 8.4.0 changed the frame layout, dispatch and closure
   creation, and flattens the VM runtime itself; see the READMEs in both directories.
 
 The paid VM hardening options of the dashboard (encoded jumps, stateful opcodes, split
@@ -118,6 +119,7 @@ is compared with its source `samples/http-client.src.js` instead.
 | `corpus/builds/` | 120 builds of 83 programs (obfuscator.io 8.0.6, eight option sets: VM only, + string array, + control-flow flattening, + expression obfuscation, all, raw, Node target) | all 120 behave like the build; two carry a documented one-line difference (`corpus/expected-divergence.json`) |
 | `samples/v840_vmlow/` | 11 builds of 11 programs (obfuscator.io 8.4.0, VM Low, Node target): `node test/corpus.js samples/v840_vmlow` | all 11 behave like the build |
 | `samples/v840_options/` | 28 builds of 4 programs (obfuscator.io 8.4.0, VM Low, seven option sets: VM only, + string array, + control-flow flattening, + expression obfuscation, all, raw, Node target) | all 28 behave like the build |
+| `samples/v840_examples/` | 5 builds of the obfuscator.io dashboard's built-in examples (Hello World, Fibonacci, Array Operations, Simple Calculator, String Utilities; 8.4.0, VM Low, Node target) | all 5 behave like the build |
 | test262 (harness in `tools/test262/`, builds not in the repository) | 9,512 language tests of [test262](https://github.com/tc39/test262) in 17 builds each, VM with and without string array / split strings / numbers to expressions / transform keys: obfuscator.io 8.0.8 and 8.4.0 | 8.0.8: all 8,824 tests the build itself passes give the same result after decompiling (the other 688 fail in the obfuscated build already); 8.4.0: all 8,953 (the other 559 fail in the build) |
 
 ## Layout
